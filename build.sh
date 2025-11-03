@@ -2,12 +2,14 @@
 # Exit on error
 set -o errexit
 
-# Install dependencies
+# 1. Upgrade pip
+pip install --upgrade pip
+
+# 2. Install dependencies (with the new pip)
 pip install -r requirements.txt
 
-# Collect static files (for the admin panel)
+# 3. Collect static files
 python manage.py collectstatic --no-input
 
-# Apply any new database migrations
+# 4. Apply database migrations
 python manage.py migrate
-
