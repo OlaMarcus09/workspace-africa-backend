@@ -1,21 +1,25 @@
 import os
 from pathlib import Path
 from datetime import timedelta
+import dj_database_url # Import this for Render Postgres
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-YOUR-SECRET-KEY-GOES-HERE'
+# Render will provide this as an environment variable
+SECRET_KEY = os.environ.get('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# We will set this to 'False' on Render
+DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 
-ALLOWED_HOSTS = []
-
+# --- RENDER DEPLOYMENT ---
+# This is our live site's domain.
+# We'll set this in Render: WORKSPACE_AFRICA_BE_URL
+ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '127.0.0.1').split(',')
 
 # Application definition
-
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -28,11 +32,12 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt', 
     'users', 
     'spaces',
-    'teams', # <-- ADDED OUR NEW APP
+    'teams',
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware', # For serving static files
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -62,15 +67,15 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'core.wsgi.application'
 
-
 # Database
+# This will use our local db.sqlite3 by default
+# On Render, it will use the DATABASE_URL env var
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
+    'default': dj_database_url.config(
+        default=f'sqlite:///{BASE_DIR / "db.sqlite3"}',
+        conn_max_age=600
+    )
 }
-
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
@@ -80,26 +85,30 @@ AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',},
 ]
 
-
 # Internationalization
 LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'Africa/Lagos'
 USE_I18N = True
 USE_TZ = True
 
-
 # Static files (CSS, JavaScript, Images)
 STATIC_URL = 'static/'
+# This is where 'collectstatic' will put all our admin files
+STATIC_ROOT = BASE_DIR / 'staticfiles' 
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # --- Custom Settings ---
-
 AUTH_USER_MODEL = 'users.CustomUser'
 
-CORS_ALLOWED_ORIGINS = [
-    'http://localhost:3000',
-    'http://127.0.0.1:3000',
-]
+# --- RENDER DEPLOYMENT ---
+# We will set our Vercel URL here in Render's env vars
+CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:3000').split(',')
+# If we need to be more permissive for Vercel's preview deploys
+# CORS_ALLOWED_ORIGIN_REGEXES = [
+#     r"^https://.*\.vercel\.app$",
+# ]
 
 REST_FRAMEWORK = {
     'DEFAULT_RENDERER_CLASSES': [

@@ -2,63 +2,85 @@ from rest_framework import viewsets, generics, status
 from rest_framework.response import Response
 from .models import Team, Invitation
 from django.contrib.auth import get_user_model
-from .serializers import TeamSerializer, InvitationSerializer, TeamMemberSerializer
+from .serializers import (
+    TeamSerializer, 
+    InvitationSerializer, 
+    TeamMemberSerializer,
+    TeamBillingSerializer 
+)
 from .permissions import IsTeamAdmin
 from django.shortcuts import get_object_or_404
 
 User = get_user_model()
 
 class TeamAdminDashboardView(generics.RetrieveAPIView):
-    """
-    The main dashboard for the Team Admin.
-    Shows their team, members, and pending invites.
-    GET /api/team/dashboard/
-    """
     serializer_class = TeamSerializer
     permission_classes = [IsTeamAdmin]
 
     def get_object(self):
-        # The permission check already confirms they admin a team.
-        # We just get the first team they admin.
         return self.request.user.administered_teams.first()
 
-class TeamMemberViewSet(viewsets.ReadOnlyModelViewSet):
+class TeamBillingView(generics.RetrieveAPIView):
+    serializer_class = TeamBillingSerializer
+    permission_classes = [IsTeamAdmin]
+
+    def get_object(self):
+        return self.request.user.administered_teams.first()
+
+# --- MODIFIED VIEW ---
+class TeamMemberViewSet(viewsets.ModelViewSet): # <-- Changed from ReadOnly
     """
-    Lists and retrieves members of the admin's team.
+    Lists, retrieves, and removes members of the admin's team.
     GET /api/team/members/
     GET /api/team/members/<id>/
+    DELETE /api/team/members/<id>/ (to remove)
     """
     serializer_class = TeamMemberSerializer
     permission_classes = [IsTeamAdmin]
+    
+    # We only want GET and DELETE, not POST/PUT
+    http_method_names = ['get', 'delete', 'head', 'options']
 
     def get_queryset(self):
-        # Get the admin's team
         team = self.request.user.administered_teams.first()
         if team:
-            # Return only members of that team
             return team.members.all()
-        return User.objects.none() # Return empty if no team
+        return User.objects.none()
+
+    def destroy(self, request, *args, **kwargs):
+        """
+        This is the 'remove member' function (handles DELETE)
+        """
+        member = self.get_object()
+        
+        # Safety check: admin can't remove themselves
+        if member == request.user:
+            return Response(
+                {"error": "You cannot remove yourself from the team."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Unlink the user from the team
+        member.team = None
+        member.user_type = 'SUBSCRIBER'
+        # TODO: We also need to cancel their individual access
+        # For now, we'll just unlink them.
+        member.save()
+        
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 class InvitationViewSet(viewsets.ModelViewSet):
-    """
-    Manages invitations for the admin's team.
-    POST /api/team/invites/ (to create)
-    GET /api/team/invites/ (to list)
-    DELETE /api/team/invites/<id>/ (to revoke)
-    """
     serializer_class = InvitationSerializer
     permission_classes = [IsTeamAdmin]
+    http_method_names = ['get', 'post', 'delete', 'head', 'options'] # Added delete
 
     def get_queryset(self):
-        # Get the admin's team
         team = self.request.user.administered_teams.first()
         if team:
-            # Return only invites for that team
             return team.invitations.all().order_by('-created_at')
         return Invitation.objects.none()
 
     def perform_create(self, serializer):
-        # When creating an invite, automatically assign the team and sent_by
         team = self.request.user.administered_teams.first()
         serializer.save(
             team=team,
