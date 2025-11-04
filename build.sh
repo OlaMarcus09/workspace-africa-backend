@@ -2,11 +2,10 @@
 # Exit on error
 set -o errexit
 
-# --- NEW FIX ---
-# Force upgrade pip, setuptools, and wheel before anything else
-pip install --upgrade pip setuptools wheel
+# Upgrade pip
+pip install --upgrade pip
 
-# Now, install our dependencies
+# Install dependencies from our clean file
 pip install -r requirements.txt
 
 # Collect static files (for the admin panel)
