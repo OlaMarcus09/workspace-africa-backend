@@ -4,7 +4,7 @@ from spaces.serializers import SubscriptionSerializer
 from spaces.models import CheckIn
 from django.utils import timezone
 
-User = get_user_model()
+User = get_user_model() # Gets our CustomUser model
 
 class UserRegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True, style={'input_type': 'password'})
@@ -29,19 +29,43 @@ class UserRegisterSerializer(serializers.ModelSerializer):
         validated_data.pop('password2', None)
         return user
 
+# --- THIS IS THE MODIFIED SERIALIZER ---
 class UserProfileSerializer(serializers.ModelSerializer):
-    subscription = SubscriptionSerializer(read_only=True)
+    # We need to find the *first* subscription, as it's no longer OneToOne
+    subscription = serializers.SerializerMethodField()
     days_used = serializers.SerializerMethodField()
     total_days = serializers.SerializerMethodField()
+    
+    # We need to see the IDs for team and space
+    team = serializers.PrimaryKeyRelatedField(read_only=True)
+    managed_space = serializers.PrimaryKeyRelatedField(read_only=True)
 
     class Meta:
         model = User
-        fields = ('id', 'email', 'username', 'photo_url', 'subscription', 'days_used', 'total_days')
+        fields = (
+            'id', 
+            'email', 
+            'username', 
+            'photo_url', 
+            
+            # --- THIS IS THE FIX ---
+            'user_type',
+            'team',
+            'managed_space',
+            
+            # --- OLD FIELDS ---
+            'subscription', 
+            'days_used', 
+            'total_days'
+        )
+    
+    def get_subscription(self, obj):
+        sub = obj.subscriptions.first()
+        if sub:
+            return SubscriptionSerializer(sub).data
+        return None
 
     def get_days_used(self, obj):
-        if not hasattr(obj, 'subscriptions') or not obj.subscriptions.first():
-            return 0
-        
         sub = obj.subscriptions.first()
         if not sub or not sub.start_date:
              return 0
@@ -50,15 +74,12 @@ class UserProfileSerializer(serializers.ModelSerializer):
         return days_used
 
     def get_total_days(self, obj):
-        if not hasattr(obj, 'subscriptions') or not obj.subscriptions.first():
+        sub = obj.subscriptions.first()
+        if not sub:
             return 0
-        return obj.subscriptions.first().plan.included_days
+        return sub.plan.included_days
 
-# --- NEW SERIALIZER ---
 class TeamMemberSerializer(serializers.ModelSerializer):
-    """
-    Simplified serializer for listing team members.
-    """
     class Meta:
         model = User
         fields = ('id', 'email', 'username', 'photo_url')
