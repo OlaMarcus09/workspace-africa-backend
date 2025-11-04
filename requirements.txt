@@ -1,14 +1,16 @@
-asgiref==3.8.1
-backports.zoneinfo==0.2.1
-dj-database-url==3.0.1
+# --- FIX FOR RENDER BUILD FAILURE ---
+# This package is failing to build on Render's C environment.
+# We are on Python 3.11, so we do not need this backport.
+# This line tells pip to install nothing for this requirement.
+backports.zoneinfo ; python_version >= "3.9"
+
+# --- Our App's Dependencies ---
+dj-database-url==0.5.0
 Django==4.2.25
 django-cors-headers==4.4.0
-djangorestframework==3.15.2
+djangorestframework==3.15.1
 djangorestframework-simplejwt==5.3.1
-gunicorn==23.0.0
-packaging==25.0
-PyJWT==2.9.0
-pytz==2025.2
-sqlparse==0.5.3
-typing_extensions==4.13.2
+gunicorn==22.0.0
+psycopg2-binary==2.9.9 # Added for Render Postgres
+pytz==2024.1
 whitenoise==6.7.0
