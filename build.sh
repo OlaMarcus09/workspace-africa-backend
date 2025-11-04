@@ -2,14 +2,15 @@
 # Exit on error
 set -o errexit
 
-# 1. Upgrade pip
-pip install --upgrade pip
+# --- NEW FIX ---
+# Force upgrade pip, setuptools, and wheel before anything else
+pip install --upgrade pip setuptools wheel
 
-# 2. Install dependencies (with the new pip)
+# Now, install our dependencies
 pip install -r requirements.txt
 
-# 3. Collect static files
+# Collect static files (for the admin panel)
 python manage.py collectstatic --no-input
 
-# 4. Apply database migrations
+# Apply any new database migrations
 python manage.py migrate
