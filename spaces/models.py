@@ -35,22 +35,20 @@ class PartnerSpace(models.Model):
         return self.name
 
 class Subscription(models.Model):
-    # --- MODIFIED ---
-    # A subscription can belong to EITHER a single user OR a team, but not both.
-    # We will enforce this logic in our views.
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, 
-        related_name='subscriptions', # Changed from OneToOne 'subscription'
+        related_name='subscriptions',
         on_delete=models.CASCADE,
-        null=True, # Can be null if it's a team subscription
+        null=True,
         blank=True
     )
-    # The 'team' relationship is now defined on the Team model (OneToOne)
-    
     plan = models.ForeignKey(Plan, related_name='subscriptions', on_delete=models.PROTECT)
     start_date = models.DateField(auto_now_add=True)
     end_date = models.DateField(blank=True, null=True, help_text="When the subscription expires")
     is_active = models.BooleanField(default=True)
+    
+    # --- NEW FIELD ---
+    paystack_reference = models.CharField(max_length=100, blank=True, null=True, unique=True)
 
     def __str__(self):
         if self.user:

@@ -5,7 +5,8 @@ from .views import (
     PartnerSpaceViewSet, 
     GenerateCheckInTokenView,
     CheckInValidateView,
-    PartnerDashboardView # <-- Import new
+    PartnerDashboardView,
+    SubscriptionCreateView # <-- Import new
 )
 
 router = DefaultRouter()
@@ -13,11 +14,14 @@ router.register(r'plans', PlanViewSet)
 router.register(r'spaces', PartnerSpaceViewSet)
 
 urlpatterns = [
-    # Public & Subscriber endpoints
+    # Router URLs (e.g., /api/plans/, /api/spaces/)
     path('', include(router.urls)),
+    
+    # Subscriber endpoints
     path('check-in/generate/', GenerateCheckInTokenView.as_view(), name='generate_check_in_token'),
+    path('subscriptions/create/', SubscriptionCreateView.as_view(), name='subscription_create'), # <-- NEW
     
     # Partner-only endpoints
     path('check-in/validate/', CheckInValidateView.as_view(), name='validate_check_in_token'),
-    path('partner/dashboard/', PartnerDashboardView.as_view(), name='partner_dashboard'), # <-- NEW URL
+    path('partner/dashboard/', PartnerDashboardView.as_view(), name='partner_dashboard'),
 ]
