@@ -1,9 +1,29 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
-from spaces.models import CheckIn, Subscription # <-- Import the model
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from spaces.models import CheckIn, Subscription
 from django.utils import timezone
 
 User = get_user_model()
+
+# --- NEW SERIALIZER ---
+class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
+    """
+    This custom serializer uses 'email' instead of 'username' for login.
+    """
+    @classmethod
+    def get_token(cls, user):
+        token = super().get_token(user)
+        # You can add custom claims to the token here if needed
+        token['username'] = user.username
+        return token
+
+    def validate(self, attrs):
+        # We change the 'username' field to 'email'
+        attrs[self.username_field] = attrs.get('email')
+        return super().validate(attrs)
+
+# --- (Rest of the file is the same) ---
 
 class UserRegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True, style={'input_type': 'password'})
@@ -29,40 +49,21 @@ class UserRegisterSerializer(serializers.ModelSerializer):
         return user
 
 class UserProfileSerializer(serializers.ModelSerializer):
-    """
-    Serializer for the /api/users/me/ endpoint.
-    Shows the user's details and their subscription status.
-    """
-    # --- THIS IS THE FIX ---
-    # We change this from a direct import to a SerializerMethodField
-    # This breaks the circular import loop.
     subscription = serializers.SerializerMethodField()
     days_used = serializers.SerializerMethodField()
     total_days = serializers.SerializerMethodField()
-    
-    # We need to see the IDs for team and space
     team = serializers.PrimaryKeyRelatedField(read_only=True)
     managed_space = serializers.PrimaryKeyRelatedField(read_only=True)
 
     class Meta:
         model = User
         fields = (
-            'id', 
-            'email', 
-            'username', 
-            'photo_url', 
-            'user_type',
-            'team',
-            'managed_space',
-            'subscription', # <-- This now uses the method below
-            'days_used', 
-            'total_days'
+            'id', 'email', 'username', 'photo_url', 'user_type',
+            'team', 'managed_space', 'subscription', 'days_used', 'total_days'
         )
     
     def get_subscription(self, obj):
-        # We import the serializer *inside* the method
         from spaces.serializers import SubscriptionSerializer 
-        # We get the user's *first active* subscription
         sub = obj.subscriptions.filter(is_active=True).first()
         if sub:
             return SubscriptionSerializer(sub).data
@@ -72,12 +73,10 @@ class UserProfileSerializer(serializers.ModelSerializer):
         sub = obj.subscriptions.filter(is_active=True).first()
         if not sub or not sub.start_date:
              return 0
-        
-        # We'll calculate days used since the cycle started (more robust logic later)
         days_used = CheckIn.objects.filter(
             user=obj, 
             timestamp__gte=sub.start_date
-        ).values('timestamp__date').distinct().count() # Count distinct days
+        ).values('timestamp__date').distinct().count()
         return days_used
 
     def get_total_days(self, obj):
@@ -87,10 +86,6 @@ class UserProfileSerializer(serializers.ModelSerializer):
         return sub.plan.included_days
 
 class TeamMemberSerializer(serializers.ModelSerializer):
-    """
-    Simplified serializer for listing team members.
-    (This is what spaces/serializers.py imports)
-    """
     class Meta:
         model = User
         fields = ('id', 'email', 'username', 'photo_url')
