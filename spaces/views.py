@@ -4,7 +4,7 @@ from django.utils import timezone
 from django.db import transaction
 from rest_framework import viewsets, permissions, generics, status
 from rest_framework.response import Response
-import requests # We need this to talk to Paystack
+import requests
 
 from .models import Plan, PartnerSpace, CheckIn, CheckInToken, Subscription
 from .serializers import (
@@ -12,12 +12,14 @@ from .serializers import (
     PartnerSpaceSerializer, 
     CheckInTokenSerializer,
     CheckInValidationSerializer,
-    SubscriptionSerializer # We'll use this
+    SubscriptionSerializer,
+    SubscriptionCreateSerializer,
+    CheckInReportSerializer # <-- Import new
 )
-from users.serializers import UserProfileSerializer 
+# We need both user serializers
+from users.serializers import UserProfileSerializer, TeamMemberSerializer 
 from .permissions import IsPartnerUser
 
-# --- Paystack API Settings ---
 PAYSTACK_SECRET_KEY = settings.PAYSTACK_SECRET_KEY
 PAYSTACK_BASE_URL = "https://api.paystack.co"
 
@@ -110,65 +112,42 @@ class PartnerDashboardView(generics.RetrieveAPIView):
         }
         return Response(data, status=status.HTTP_200_OK)
 
-# --- 3. NEW PAYMENT ENDPOINTS ---
-
+# --- 3. Payment Views (Unchanged) ---
 class PaymentInitializeView(generics.GenericAPIView):
-    """
-    Endpoint for initializing a new subscription payment.
-    POST /api/payments/initialize/
-    """
     permission_classes = [permissions.IsAuthenticated]
-
     def post(self, request, *args, **kwargs):
         user = request.user
         plan_id = request.data.get('plan_id')
         plan = get_object_or_404(Plan, id=plan_id)
-        
-        # We need to get the frontend URL from our settings
         callback_url = settings.PAYMENT_CALLBACK_URL
-
         headers = {
             "Authorization": f"Bearer {PAYSTACK_SECRET_KEY}",
             "Content-Type": "application/json",
         }
-        
-        # Paystack data: we use the Plan Code
         data = {
             "email": user.email,
             "plan": plan.paystack_plan_code,
             "callback_url": callback_url,
         }
-
         try:
-            # Call Paystack to create a transaction
             response = requests.post(
                 f"{PAYSTACK_BASE_URL}/transaction/initialize",
                 headers=headers,
                 json=data
             )
-            response.raise_for_status() # Raise an error for bad responses
-            
-            # The response has our payment link
+            response.raise_for_status()
             paystack_data = response.json()
             return Response(paystack_data['data'], status=status.HTTP_200_OK)
-            
         except requests.exceptions.RequestException as e:
             return Response({"error": f"Payment gateway error: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class PaymentVerifyView(generics.GenericAPIView):
-    """
-    Endpoint that Paystack redirects back to.
-    GET /api/payments/verify/?reference=...
-    """
-    permission_classes = [permissions.AllowAny] # Must be public for Paystack to call
-
+    permission_classes = [permissions.AllowAny]
     @transaction.atomic
     def get(self, request, *args, **kwargs):
         reference = request.query_params.get('reference')
         if not reference:
             return Response({"error": "No reference provided"}, status=status.HTTP_400_BAD_REQUEST)
-
-        # 1. Verify the transaction with Paystack
         headers = {"Authorization": f"Bearer {PAYSTACK_SECRET_KEY}"}
         try:
             response = requests.get(
@@ -177,34 +156,41 @@ class PaymentVerifyView(generics.GenericAPIView):
             )
             response.raise_for_status()
             data = response.json()['data']
-
             if data['status'] != 'success':
                 return Response({"error": "Payment not successful"}, status=status.HTTP_400_BAD_REQUEST)
-
-            # 2. Get the user and plan
             user_email = data['customer']['email']
             plan_code = data['plan']
-            
             user = get_object_or_404(settings.AUTH_USER_MODEL, email=user_email)
             plan = get_object_or_404(Plan, paystack_plan_code=plan_code)
-
-            # 3. Check if this payment has already been processed
             if Subscription.objects.filter(paystack_reference=reference).exists():
                 return Response({"error": "This payment has already been processed."}, status=status.HTTP_400_BAD_REQUEST)
-
-            # 4. Create the subscription
-            user.subscriptions.update(is_active=False) # Deactivate old ones
+            user.subscriptions.update(is_active=False)
             Subscription.objects.create(
                 user=user,
                 plan=plan,
                 paystack_reference=reference,
                 is_active=True
             )
-            
-            # 5. Redirect the user back to the app's success page
-            # We'll set this in Render
             success_url = settings.PAYMENT_SUCCESS_URL
             return redirect(success_url)
-
         except requests.exceptions.RequestException as e:
             return Response({"error": f"Payment verification error: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# --- 4. NEW REPORTS ENDPOINT ---
+class PartnerReportView(generics.ListAPIView):
+    """
+    Endpoint for the Partner's detailed check-in report.
+    GET /api/partner/reports/
+    """
+    serializer_class = CheckInReportSerializer
+    permission_classes = [IsPartnerUser]
+
+    def get_queryset(self):
+        # Get the partner's space from their user object
+        partner_space = self.request.user.managed_space
+        
+        # Return all check-ins for their space,
+        # ordered by most recent first
+        return CheckIn.objects.filter(
+            space=partner_space
+        ).order_by('-timestamp')
