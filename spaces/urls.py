@@ -6,7 +6,8 @@ from .views import (
     GenerateCheckInTokenView,
     CheckInValidateView,
     PartnerDashboardView,
-    SubscriptionCreateView # <-- Import new
+    PaymentInitializeView, # <-- NEW
+    PaymentVerifyView      # <-- NEW
 )
 
 router = DefaultRouter()
@@ -14,12 +15,14 @@ router.register(r'plans', PlanViewSet)
 router.register(r'spaces', PartnerSpaceViewSet)
 
 urlpatterns = [
-    # Router URLs (e.g., /api/plans/, /api/spaces/)
     path('', include(router.urls)),
     
     # Subscriber endpoints
     path('check-in/generate/', GenerateCheckInTokenView.as_view(), name='generate_check_in_token'),
-    path('subscriptions/create/', SubscriptionCreateView.as_view(), name='subscription_create'), # <-- NEW
+    
+    # --- NEW PAYMENT FLOW ---
+    path('payments/initialize/', PaymentInitializeView.as_view(), name='payment_initialize'),
+    path('payments/verify/', PaymentVerifyView.as_view(), name='payment_verify'),
     
     # Partner-only endpoints
     path('check-in/validate/', CheckInValidateView.as_view(), name='validate_check_in_token'),

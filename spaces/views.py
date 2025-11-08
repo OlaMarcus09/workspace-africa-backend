@@ -1,19 +1,27 @@
+from django.conf import settings
+from django.shortcuts import get_object_or_404, redirect
+from django.utils import timezone
+from django.db import transaction
 from rest_framework import viewsets, permissions, generics, status
 from rest_framework.response import Response
+import requests # We need this to talk to Paystack
+
 from .models import Plan, PartnerSpace, CheckIn, CheckInToken, Subscription
 from .serializers import (
     PlanSerializer, 
     PartnerSpaceSerializer, 
     CheckInTokenSerializer,
     CheckInValidationSerializer,
-    SubscriptionCreateSerializer # <-- Import new
+    SubscriptionSerializer # We'll use this
 )
 from users.serializers import UserProfileSerializer 
-from django.utils import timezone
-from django.db import transaction
 from .permissions import IsPartnerUser
 
-# ... (PlanViewSet and PartnerSpaceViewSet are unchanged) ...
+# --- Paystack API Settings ---
+PAYSTACK_SECRET_KEY = settings.PAYSTACK_SECRET_KEY
+PAYSTACK_BASE_URL = "https://api.paystack.co"
+
+# --- 1. Plan & Space Views (Unchanged) ---
 class PlanViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Plan.objects.all().order_by('price_ngn')
     serializer_class = PlanSerializer
@@ -23,8 +31,8 @@ class PartnerSpaceViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = PartnerSpace.objects.all()
     serializer_class = PartnerSpaceSerializer
 
+# --- 2. Check-In & Partner Views (Unchanged) ---
 class GenerateCheckInTokenView(generics.GenericAPIView):
-    # ... (This view is unchanged) ...
     serializer_class = CheckInTokenSerializer
     permission_classes = [permissions.IsAuthenticated]
     @transaction.atomic
@@ -32,10 +40,10 @@ class GenerateCheckInTokenView(generics.GenericAPIView):
         user = request.user
         now = timezone.now()
         try:
-            sub = user.subscriptions.first() # Use .subscriptions.first()
+            sub = user.subscriptions.first()
             if not sub or not sub.is_active or (sub.end_date and sub.end_date < now.date()):
                 return Response({"error": "Your subscription is not active."}, status=status.HTTP_403_FORBIDDEN)
-        except Subscription.DoesNotExist:
+        except Exception:
             return Response({"error": "You do not have a subscription."}, status=status.HTTP_403_FORBIDDEN)
         
         start_date = sub.start_date
@@ -50,9 +58,7 @@ class GenerateCheckInTokenView(generics.GenericAPIView):
         serializer = self.get_serializer(token)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
-
 class CheckInValidateView(generics.GenericAPIView):
-    # ... (This view is unchanged) ...
     serializer_class = CheckInValidationSerializer
     permission_classes = [IsPartnerUser]
     @transaction.atomic
@@ -74,7 +80,7 @@ class CheckInValidateView(generics.GenericAPIView):
             return Response({"error": "INVALID: Code has expired."}, status=status.HTTP_410_GONE)
         user = token.user
         try:
-            plan = user.subscriptions.first().plan # Use .subscriptions.first()
+            plan = user.subscriptions.first().plan
             if not user.subscriptions.first().is_active: raise Exception
         except Exception:
             return Response({"error": "INVALID: User has no active subscription."}, status=status.HTTP_403_FORBIDDEN)
@@ -86,7 +92,6 @@ class CheckInValidateView(generics.GenericAPIView):
         return Response({"status": "VALID", "user": user_serializer.data}, status=status.HTTP_200_OK)
 
 class PartnerDashboardView(generics.RetrieveAPIView):
-    # ... (This view is unchanged) ...
     permission_classes = [IsPartnerUser]
     def get(self, request, *args, **kwargs):
         partner_space = request.user.managed_space
@@ -105,39 +110,101 @@ class PartnerDashboardView(generics.RetrieveAPIView):
         }
         return Response(data, status=status.HTTP_200_OK)
 
-# --- NEW VIEW ---
-class SubscriptionCreateView(generics.CreateAPIView):
+# --- 3. NEW PAYMENT ENDPOINTS ---
+
+class PaymentInitializeView(generics.GenericAPIView):
     """
-    Endpoint for creating a subscription after a successful
-    Paystack payment.
-    POST /api/subscriptions/create/
+    Endpoint for initializing a new subscription payment.
+    POST /api/payments/initialize/
     """
-    serializer_class = SubscriptionCreateSerializer
-    permission_classes = [permissions.IsAuthenticated] # Only a logged-in user can create a sub
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        user = request.user
+        plan_id = request.data.get('plan_id')
+        plan = get_object_or_404(Plan, id=plan_id)
+        
+        # We need to get the frontend URL from our settings
+        callback_url = settings.PAYMENT_CALLBACK_URL
+
+        headers = {
+            "Authorization": f"Bearer {PAYSTACK_SECRET_KEY}",
+            "Content-Type": "application/json",
+        }
+        
+        # Paystack data: we use the Plan Code
+        data = {
+            "email": user.email,
+            "plan": plan.paystack_plan_code,
+            "callback_url": callback_url,
+        }
+
+        try:
+            # Call Paystack to create a transaction
+            response = requests.post(
+                f"{PAYSTACK_BASE_URL}/transaction/initialize",
+                headers=headers,
+                json=data
+            )
+            response.raise_for_status() # Raise an error for bad responses
+            
+            # The response has our payment link
+            paystack_data = response.json()
+            return Response(paystack_data['data'], status=status.HTTP_200_OK)
+            
+        except requests.exceptions.RequestException as e:
+            return Response({"error": f"Payment gateway error: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class PaymentVerifyView(generics.GenericAPIView):
+    """
+    Endpoint that Paystack redirects back to.
+    GET /api/payments/verify/?reference=...
+    """
+    permission_classes = [permissions.AllowAny] # Must be public for Paystack to call
 
     @transaction.atomic
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        data = serializer.validated_data
-        
-        user = request.user
-        plan = Plan.objects.get(id=data['plan_id'])
-        
-        # TODO: Here, we should contact Paystack with our SECRET_KEY
-        # to verify the 'paystack_reference' is real and successful.
-        # For MVP, we will trust the client.
-        
-        # Deactivate any old subscriptions
-        user.subscriptions.update(is_active=False)
-        
-        # Create the new, active subscription
-        new_sub = Subscription.objects.create(
-            user=user,
-            plan=plan,
-            paystack_reference=data['paystack_reference'],
-            is_active=True
-            # We'll add 'end_date' logic later with webhooks
-        )
-        
-        return Response(SubscriptionSerializer(new_sub).data, status=status.HTTP_201_CREATED)
+    def get(self, request, *args, **kwargs):
+        reference = request.query_params.get('reference')
+        if not reference:
+            return Response({"error": "No reference provided"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 1. Verify the transaction with Paystack
+        headers = {"Authorization": f"Bearer {PAYSTACK_SECRET_KEY}"}
+        try:
+            response = requests.get(
+                f"{PAYSTACK_BASE_URL}/transaction/verify/{reference}",
+                headers=headers
+            )
+            response.raise_for_status()
+            data = response.json()['data']
+
+            if data['status'] != 'success':
+                return Response({"error": "Payment not successful"}, status=status.HTTP_400_BAD_REQUEST)
+
+            # 2. Get the user and plan
+            user_email = data['customer']['email']
+            plan_code = data['plan']
+            
+            user = get_object_or_404(settings.AUTH_USER_MODEL, email=user_email)
+            plan = get_object_or_404(Plan, paystack_plan_code=plan_code)
+
+            # 3. Check if this payment has already been processed
+            if Subscription.objects.filter(paystack_reference=reference).exists():
+                return Response({"error": "This payment has already been processed."}, status=status.HTTP_400_BAD_REQUEST)
+
+            # 4. Create the subscription
+            user.subscriptions.update(is_active=False) # Deactivate old ones
+            Subscription.objects.create(
+                user=user,
+                plan=plan,
+                paystack_reference=reference,
+                is_active=True
+            )
+            
+            # 5. Redirect the user back to the app's success page
+            # We'll set this in Render
+            success_url = settings.PAYMENT_SUCCESS_URL
+            return redirect(success_url)
+
+        except requests.exceptions.RequestException as e:
+            return Response({"error": f"Payment verification error: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
