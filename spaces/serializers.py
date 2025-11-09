@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from .models import Plan, PartnerSpace, Subscription, CheckIn, CheckInToken
-# We NO LONGER import from users.serializers
+# We NO LONGER import from users.serializers at the top
 
 class PlanSerializer(serializers.ModelSerializer):
     class Meta:
@@ -39,11 +39,12 @@ class SubscriptionCreateSerializer(serializers.Serializer):
             raise serializers.ValidationError("This payment has already been processed.")
         return value
 
+# --- THIS IS THE FIX ---
 class CheckInReportSerializer(serializers.ModelSerializer):
     """
     Serializer for the Partner's report.
+    This no longer imports TeamMemberSerializer, breaking the loop.
     """
-    # This breaks the circular import by just using the user's email string
     user = serializers.StringRelatedField(read_only=True) 
 
     class Meta:

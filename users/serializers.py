@@ -1,12 +1,11 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from spaces.models import CheckIn, Subscription
+from spaces.models import CheckIn, Subscription # Import models, NOT serializers
 from django.utils import timezone
 
 User = get_user_model()
 
-# --- (Token Serializer is unchanged) ---
 class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
     @classmethod
     def get_token(cls, user):
@@ -17,7 +16,6 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
         attrs[self.username_field] = attrs.get('email')
         return super().validate(attrs)
 
-# --- (Register Serializer is unchanged) ---
 class UserRegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True, style={'input_type': 'password'})
     password2 = serializers.CharField(write_only=True, required=True, label='Confirm password')
@@ -40,15 +38,9 @@ class UserRegisterSerializer(serializers.ModelSerializer):
 
 # --- THIS IS THE FIX ---
 class UserProfileSerializer(serializers.ModelSerializer):
-    """
-    Serializer for the /api/users/me/ endpoint.
-    """
-    # We MUST use SerializerMethodField to break the circular import
-    # AND to correctly fetch the first item.
-    subscription = serializers.SerializerMethodField()
+    subscription = serializers.SerializerMethodField() # This breaks the loop
     days_used = serializers.SerializerMethodField()
     total_days = serializers.SerializerMethodField()
-    
     team = serializers.PrimaryKeyRelatedField(read_only=True)
     managed_space = serializers.PrimaryKeyRelatedField(read_only=True)
 
@@ -62,7 +54,6 @@ class UserProfileSerializer(serializers.ModelSerializer):
     def get_subscription(self, obj):
         # We import the serializer *inside* the method
         from spaces.serializers import SubscriptionSerializer 
-        # We get the user's *first active* subscription
         sub = obj.subscriptions.filter(is_active=True).first()
         if sub:
             return SubscriptionSerializer(sub).data
@@ -86,8 +77,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
 class TeamMemberSerializer(serializers.ModelSerializer):
     """
-    Simplified serializer for listing team members.
-    (This is what spaces/serializers.py imports)
+    This is what spaces.serializers.py will import.
     """
     class Meta:
         model = User
