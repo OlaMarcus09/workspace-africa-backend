@@ -1,7 +1,7 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from spaces.models import CheckIn, Subscription # <-- Import the model, not the serializer
+from spaces.models import CheckIn, Subscription
 from django.utils import timezone
 
 User = get_user_model()
@@ -43,9 +43,9 @@ class UserProfileSerializer(serializers.ModelSerializer):
     """
     Serializer for the /api/users/me/ endpoint.
     """
-    # We change this from a direct import to a SerializerMethodField
-    # This breaks the circular import loop.
-    subscription = serializers.SerializerMethodField() 
+    # We MUST use SerializerMethodField to break the circular import
+    # AND to correctly fetch the first item.
+    subscription = serializers.SerializerMethodField()
     days_used = serializers.SerializerMethodField()
     total_days = serializers.SerializerMethodField()
     
@@ -62,6 +62,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
     def get_subscription(self, obj):
         # We import the serializer *inside* the method
         from spaces.serializers import SubscriptionSerializer 
+        # We get the user's *first active* subscription
         sub = obj.subscriptions.filter(is_active=True).first()
         if sub:
             return SubscriptionSerializer(sub).data

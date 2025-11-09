@@ -1,7 +1,6 @@
 from rest_framework import serializers
 from .models import Plan, PartnerSpace, Subscription, CheckIn, CheckInToken
-# We need our user serializer to nest it
-from users.serializers import TeamMemberSerializer
+# We NO LONGER import from users.serializers
 
 class PlanSerializer(serializers.ModelSerializer):
     class Meta:
@@ -40,14 +39,12 @@ class SubscriptionCreateSerializer(serializers.Serializer):
             raise serializers.ValidationError("This payment has already been processed.")
         return value
 
-# --- NEW SERIALIZER ---
 class CheckInReportSerializer(serializers.ModelSerializer):
     """
     Serializer for the Partner's report.
-    Shows who checked in and when.
     """
-    # We nest the user serializer to show their name/email
-    user = TeamMemberSerializer(read_only=True) 
+    # This breaks the circular import by just using the user's email string
+    user = serializers.StringRelatedField(read_only=True) 
 
     class Meta:
         model = CheckIn
