@@ -65,7 +65,7 @@ class CheckInValidateView(generics.GenericAPIView):
         space_id = serializer.validated_data['space_id']
         now = timezone.now()
         if request.user.managed_space.id != space_id:
-            return Response({"error": "You are not authorized for this space."}, status=status.HTTP_4GE_REQUIRED)
+            return Response({"error": "You are not authorized for this space."}, status=status.HTTP_403_FORBIDDEN)
         space = request.user.managed_space
         try:
             token = CheckInToken.objects.select_related('user', 'user__subscriptions__plan').get(code=code)
@@ -141,7 +141,7 @@ class PaymentVerifyView(generics.GenericAPIView):
             user_email = data['customer']['email']
             plan_code = data['plan']
             user = get_object_or_404(settings.AUTH_USER_MODEL, email=user_email)
-            plan = get_object_or_44(Plan, paystack_plan_code=plan_code)
+            plan = get_object_or_404(Plan, paystack_plan_code=plan_code)
             if Subscription.objects.filter(paystack_reference=reference).exists():
                 return Response({"error": "This payment has already been processed."}, status=status.HTTP_400_BAD_REQUEST)
             user.subscriptions.update(is_active=False)
