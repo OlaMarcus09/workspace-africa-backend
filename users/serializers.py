@@ -76,9 +76,6 @@ class UserProfileSerializer(serializers.ModelSerializer):
         return sub.plan.included_days
 
 class TeamMemberSerializer(serializers.ModelSerializer):
-    """
-    This is what spaces.serializers.py will import.
-    """
     class Meta:
         model = User
         fields = ('id', 'email', 'username', 'photo_url')

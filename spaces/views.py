@@ -17,8 +17,7 @@ from .serializers import (
     CheckInReportSerializer
 )
 # --- THIS IS THE FIX (PART 1) ---
-# We import the SAFE serializer, not the one that causes the loop
-from users.serializers import TeamMemberSerializer 
+from users.serializers import TeamMemberSerializer # This is now safe
 from .permissions import IsPartnerUser
 
 PAYSTACK_SECRET_KEY = settings.PAYSTACK_SECRET_KEY
@@ -55,7 +54,6 @@ class GenerateCheckInTokenView(generics.GenericAPIView):
         serializer = self.get_serializer(token)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
-# --- THIS VIEW IS NOW FIXED ---
 class CheckInValidateView(generics.GenericAPIView):
     serializer_class = CheckInValidationSerializer
     permission_classes = [IsPartnerUser]
@@ -67,7 +65,7 @@ class CheckInValidateView(generics.GenericAPIView):
         space_id = serializer.validated_data['space_id']
         now = timezone.now()
         if request.user.managed_space.id != space_id:
-            return Response({"error": "You are not authorized for this space."}, status=status.HTTP_403_FORBIDDEN)
+            return Response({"error": "You are not authorized for this space."}, status=status.HTTP_4GE_REQUIRED)
         space = request.user.managed_space
         try:
             token = CheckInToken.objects.select_related('user', 'user__subscriptions__plan').get(code=code)
@@ -89,7 +87,6 @@ class CheckInValidateView(generics.GenericAPIView):
         token.delete()
         
         # --- THIS IS THE FIX (PART 2) ---
-        # We use the safe TeamMemberSerializer, not the crashing UserProfileSerializer
         user_serializer = TeamMemberSerializer(user) 
         return Response({"status": "VALID", "user": user_serializer.data}, status=status.HTTP_200_OK)
 
@@ -121,7 +118,7 @@ class PaymentInitializeView(generics.GenericAPIView):
         headers = {"Authorization": f"Bearer {PAYSTACK_SECRET_KEY}","Content-Type": "application/json"}
         data = {"email": user.email,"plan": plan.paystack_plan_code,"callback_url": callback_url}
         try:
-            response = requests.post(f"{PAYPAYSTACK_BASE_URL}/transaction/initialize", headers=headers, json=data)
+            response = requests.post(f"{PAYSTACK_BASE_URL}/transaction/initialize", headers=headers, json=data)
             response.raise_for_status()
             paystack_data = response.json()
             return Response(paystack_data['data'], status=status.HTTP_200_OK)
@@ -144,7 +141,7 @@ class PaymentVerifyView(generics.GenericAPIView):
             user_email = data['customer']['email']
             plan_code = data['plan']
             user = get_object_or_404(settings.AUTH_USER_MODEL, email=user_email)
-            plan = get_object_or_404(Plan, paystack_plan_code=plan_code)
+            plan = get_object_or_44(Plan, paystack_plan_code=plan_code)
             if Subscription.objects.filter(paystack_reference=reference).exists():
                 return Response({"error": "This payment has already been processed."}, status=status.HTTP_400_BAD_REQUEST)
             user.subscriptions.update(is_active=False)

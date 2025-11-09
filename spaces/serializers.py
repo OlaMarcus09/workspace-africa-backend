@@ -41,12 +41,7 @@ class SubscriptionCreateSerializer(serializers.Serializer):
 
 # --- THIS IS THE FIX ---
 class CheckInReportSerializer(serializers.ModelSerializer):
-    """
-    Serializer for the Partner's report.
-    This no longer imports TeamMemberSerializer, breaking the loop.
-    """
-    user = serializers.StringRelatedField(read_only=True) 
-
+    user = serializers.StringRelatedField(read_only=True) # This is safe
     class Meta:
         model = CheckIn
         fields = ('id', 'user', 'timestamp')
