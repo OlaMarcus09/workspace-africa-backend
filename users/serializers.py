@@ -1,44 +1,34 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from spaces.models import CheckIn, Subscription
+from spaces.models import CheckIn, Subscription # <-- Import the model, not the serializer
 from django.utils import timezone
 
 User = get_user_model()
 
-# --- NEW SERIALIZER ---
+# --- (Token Serializer is unchanged) ---
 class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
-    """
-    This custom serializer uses 'email' instead of 'username' for login.
-    """
     @classmethod
     def get_token(cls, user):
         token = super().get_token(user)
-        # You can add custom claims to the token here if needed
         token['username'] = user.username
         return token
-
     def validate(self, attrs):
-        # We change the 'username' field to 'email'
         attrs[self.username_field] = attrs.get('email')
         return super().validate(attrs)
 
-# --- (Rest of the file is the same) ---
-
+# --- (Register Serializer is unchanged) ---
 class UserRegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True, style={'input_type': 'password'})
     password2 = serializers.CharField(write_only=True, required=True, label='Confirm password')
-
     class Meta:
         model = User
         fields = ('email', 'username', 'password', 'password2')
         extra_kwargs = {'username': {'required': True}}
-
     def validate(self, attrs):
         if attrs['password'] != attrs['password2']:
             raise serializers.ValidationError({"password": "Password fields didn't match."})
         return attrs
-
     def create(self, validated_data):
         user = User.objects.create_user(
             email=validated_data['email'],
@@ -48,10 +38,17 @@ class UserRegisterSerializer(serializers.ModelSerializer):
         validated_data.pop('password2', None)
         return user
 
+# --- THIS IS THE FIX ---
 class UserProfileSerializer(serializers.ModelSerializer):
-    subscription = serializers.SerializerMethodField()
+    """
+    Serializer for the /api/users/me/ endpoint.
+    """
+    # We change this from a direct import to a SerializerMethodField
+    # This breaks the circular import loop.
+    subscription = serializers.SerializerMethodField() 
     days_used = serializers.SerializerMethodField()
     total_days = serializers.SerializerMethodField()
+    
     team = serializers.PrimaryKeyRelatedField(read_only=True)
     managed_space = serializers.PrimaryKeyRelatedField(read_only=True)
 
@@ -63,6 +60,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
         )
     
     def get_subscription(self, obj):
+        # We import the serializer *inside* the method
         from spaces.serializers import SubscriptionSerializer 
         sub = obj.subscriptions.filter(is_active=True).first()
         if sub:
@@ -76,7 +74,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
         days_used = CheckIn.objects.filter(
             user=obj, 
             timestamp__gte=sub.start_date
-        ).values('timestamp__date').distinct().count()
+        ).values('timestamp__date').distinct().count() 
         return days_used
 
     def get_total_days(self, obj):
@@ -86,6 +84,10 @@ class UserProfileSerializer(serializers.ModelSerializer):
         return sub.plan.included_days
 
 class TeamMemberSerializer(serializers.ModelSerializer):
+    """
+    Simplified serializer for listing team members.
+    (This is what spaces/serializers.py imports)
+    """
     class Meta:
         model = User
         fields = ('id', 'email', 'username', 'photo_url')
