@@ -7,12 +7,17 @@ from django.utils import timezone
 User = get_user_model()
 
 class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
+    """
+    This custom serializer uses 'email' instead of 'username' for login.
+    """
     @classmethod
     def get_token(cls, user):
         token = super().get_token(user)
         token['username'] = user.username
         return token
+
     def validate(self, attrs):
+        # We change the 'username' field to 'email'
         attrs[self.username_field] = attrs.get('email')
         return super().validate(attrs)
 
@@ -36,7 +41,6 @@ class UserRegisterSerializer(serializers.ModelSerializer):
         validated_data.pop('password2', None)
         return user
 
-# --- THIS IS THE FIX ---
 class UserProfileSerializer(serializers.ModelSerializer):
     subscription = serializers.SerializerMethodField() # This breaks the loop
     days_used = serializers.SerializerMethodField()
