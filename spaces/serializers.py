@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from .models import Plan, PartnerSpace, Subscription, CheckIn, CheckInToken
+# We NO LONGER import from users.serializers at the top
 
 class PlanSerializer(serializers.ModelSerializer):
     class Meta:
