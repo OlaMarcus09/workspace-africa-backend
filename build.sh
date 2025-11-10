@@ -4,10 +4,7 @@ set -o errexit
 # Install dependencies
 pip install -r requirements.txt
 
-# Create any missing migrations first
-python manage.py makemigrations --noinput
-
-# Then apply all migrations
+# Apply all migrations (this will add the missing field on Render)
 python manage.py migrate --noinput
 
 # Create superuser if none exists
