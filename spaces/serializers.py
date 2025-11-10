@@ -39,8 +39,14 @@ class SubscriptionCreateSerializer(serializers.Serializer):
             raise serializers.ValidationError("This payment has already been processed.")
         return value
 
+# --- THIS IS THE FIX ---
 class CheckInReportSerializer(serializers.ModelSerializer):
-    user = serializers.StringRelatedField(read_only=True) # This is safe
+    """
+    Serializer for the Partner's report.
+    This no longer imports TeamMemberSerializer, breaking the loop.
+    """
+    user = serializers.StringRelatedField(read_only=True) 
+
     class Meta:
         model = CheckIn
         fields = ('id', 'user', 'timestamp')
