@@ -1,7 +1,6 @@
 from django.db import migrations, models
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ('spaces', '0008_alter_subscription_user'),
     ]
