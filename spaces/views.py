@@ -16,6 +16,8 @@ from .serializers import (
     SubscriptionCreateSerializer,
     CheckInReportSerializer
 )
+# --- THIS IS THE FIX (PART 1) ---
+# We import the SAFE serializer, not the one that causes the loop
 from users.serializers import TeamMemberSerializer 
 from .permissions import IsPartnerUser
 
@@ -52,6 +54,8 @@ class GenerateCheckInTokenView(generics.GenericAPIView):
         token = CheckInToken.objects.create(user=user)
         serializer = self.get_serializer(token)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+# --- THIS VIEW IS NOW FIXED ---
 class CheckInValidateView(generics.GenericAPIView):
     serializer_class = CheckInValidationSerializer
     permission_classes = [IsPartnerUser]
@@ -80,10 +84,15 @@ class CheckInValidateView(generics.GenericAPIView):
             return Response({"error": "INVALID: User has no active subscription."}, status=status.HTTP_403_FORBIDDEN)
         if space.access_tier == 'PREMIUM' and plan.access_tier == 'STANDARD':
             return Response({"error": "INVALID: User's plan does not allow access to this Premium space."}, status=status.HTTP_403_FORBIDDEN)
+        
         CheckIn.objects.create(user=user, space=space)
         token.delete()
+        
+        # --- THIS IS THE FIX (PART 2) ---
+        # We use the safe TeamMemberSerializer, not the crashing UserProfileSerializer
         user_serializer = TeamMemberSerializer(user) 
         return Response({"status": "VALID", "user": user_serializer.data}, status=status.HTTP_200_OK)
+
 class PartnerDashboardView(generics.RetrieveAPIView):
     permission_classes = [IsPartnerUser]
     def get(self, request, *args, **kwargs):
@@ -102,7 +111,6 @@ class PartnerDashboardView(generics.RetrieveAPIView):
             "monthly_payout_ngn": monthly_payout_ngn
         }
         return Response(data, status=status.HTTP_200_OK)
-
 class PaymentInitializeView(generics.GenericAPIView):
     permission_classes = [permissions.IsAuthenticated]
     def post(self, request, *args, **kwargs):
@@ -113,14 +121,12 @@ class PaymentInitializeView(generics.GenericAPIView):
         headers = {"Authorization": f"Bearer {PAYSTACK_SECRET_KEY}","Content-Type": "application/json"}
         data = {"email": user.email,"plan": plan.paystack_plan_code,"callback_url": callback_url}
         try:
-            # --- THIS IS THE FIX ---
             response = requests.post(f"{PAYSTACK_BASE_URL}/transaction/initialize", headers=headers, json=data)
             response.raise_for_status()
             paystack_data = response.json()
             return Response(paystack_data['data'], status=status.HTTP_200_OK)
         except requests.exceptions.RequestException as e:
             return Response({"error": f"Payment gateway error: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
 class PaymentVerifyView(generics.GenericAPIView):
     permission_classes = [permissions.AllowAny]
     @transaction.atomic
@@ -147,7 +153,6 @@ class PaymentVerifyView(generics.GenericAPIView):
             return redirect(success_url)
         except requests.exceptions.RequestException as e:
             return Response({"error": f"Payment verification error: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
 class PartnerReportView(generics.ListAPIView):
     serializer_class = CheckInReportSerializer
     permission_classes = [IsPartnerUser]
