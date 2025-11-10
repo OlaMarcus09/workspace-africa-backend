@@ -1,16 +1,19 @@
-#!/usr/bin/env bash
-# Exit on error
+#!/bin/bash
 set -o errexit
 
 # Install dependencies
-pip install --upgrade pip
 pip install -r requirements.txt
 
-# Run database migrations
-python manage.py migrate
+# Create any missing migrations first
+python manage.py makemigrations --noinput
 
-# Create superuser if none exists (your custom command)
+# Then apply all migrations
+python manage.py migrate --noinput
+
+# Create superuser if none exists
 python manage.py createsuperuser_if_none
 
 # Collect static files
 python manage.py collectstatic --noinput
+
+echo "Build completed successfully!"
