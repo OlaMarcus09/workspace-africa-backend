@@ -17,8 +17,7 @@ from .serializers import (
     CheckInReportSerializer
 )
 # --- THIS IS THE FIX (PART 1) ---
-# We import the SAFE serializer, not the one that causes the loop
-from users.serializers import TeamMemberSerializer 
+from users.serializers import TeamMemberSerializer # This is now safe
 from .permissions import IsPartnerUser
 
 PAYSTACK_SECRET_KEY = settings.PAYSTACK_SECRET_KEY
@@ -55,7 +54,6 @@ class GenerateCheckInTokenView(generics.GenericAPIView):
         serializer = self.get_serializer(token)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
-# --- THIS VIEW IS NOW FIXED ---
 class CheckInValidateView(generics.GenericAPIView):
     serializer_class = CheckInValidationSerializer
     permission_classes = [IsPartnerUser]
@@ -89,7 +87,6 @@ class CheckInValidateView(generics.GenericAPIView):
         token.delete()
         
         # --- THIS IS THE FIX (PART 2) ---
-        # We use the safe TeamMemberSerializer, not the crashing UserProfileSerializer
         user_serializer = TeamMemberSerializer(user) 
         return Response({"status": "VALID", "user": user_serializer.data}, status=status.HTTP_200_OK)
 
