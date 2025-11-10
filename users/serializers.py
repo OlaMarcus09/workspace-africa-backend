@@ -36,9 +36,8 @@ class UserRegisterSerializer(serializers.ModelSerializer):
         validated_data.pop('password2', None)
         return user
 
-# --- THIS IS THE FIX ---
 class UserProfileSerializer(serializers.ModelSerializer):
-    subscription = serializers.SerializerMethodField() # This breaks the loop
+    subscription = serializers.SerializerMethodField()
     days_used = serializers.SerializerMethodField()
     total_days = serializers.SerializerMethodField()
     team = serializers.PrimaryKeyRelatedField(read_only=True)
@@ -52,7 +51,6 @@ class UserProfileSerializer(serializers.ModelSerializer):
         )
     
     def get_subscription(self, obj):
-        # We import the serializer *inside* the method
         from spaces.serializers import SubscriptionSerializer 
         sub = obj.subscriptions.filter(is_active=True).first()
         if sub:

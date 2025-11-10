@@ -16,14 +16,12 @@ from .serializers import (
     SubscriptionCreateSerializer,
     CheckInReportSerializer
 )
-# --- THIS IS THE FIX (PART 1) ---
 from users.serializers import TeamMemberSerializer # This is now safe
 from .permissions import IsPartnerUser
 
 PAYSTACK_SECRET_KEY = settings.PAYSTACK_SECRET_KEY
 PAYSTACK_BASE_URL = "https://api.paystack.co"
 
-# --- (All other views are unchanged) ---
 class PlanViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Plan.objects.all().order_by('price_ngn')
     serializer_class = PlanSerializer
@@ -53,7 +51,6 @@ class GenerateCheckInTokenView(generics.GenericAPIView):
         token = CheckInToken.objects.create(user=user)
         serializer = self.get_serializer(token)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
-
 class CheckInValidateView(generics.GenericAPIView):
     serializer_class = CheckInValidationSerializer
     permission_classes = [IsPartnerUser]
@@ -82,14 +79,10 @@ class CheckInValidateView(generics.GenericAPIView):
             return Response({"error": "INVALID: User has no active subscription."}, status=status.HTTP_403_FORBIDDEN)
         if space.access_tier == 'PREMIUM' and plan.access_tier == 'STANDARD':
             return Response({"error": "INVALID: User's plan does not allow access to this Premium space."}, status=status.HTTP_403_FORBIDDEN)
-        
         CheckIn.objects.create(user=user, space=space)
         token.delete()
-        
-        # --- THIS IS THE FIX (PART 2) ---
         user_serializer = TeamMemberSerializer(user) 
         return Response({"status": "VALID", "user": user_serializer.data}, status=status.HTTP_200_OK)
-
 class PartnerDashboardView(generics.RetrieveAPIView):
     permission_classes = [IsPartnerUser]
     def get(self, request, *args, **kwargs):

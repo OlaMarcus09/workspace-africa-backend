@@ -9,14 +9,11 @@ from .serializers import (
 
 User = get_user_model()
 
-# --- NEW VIEW ---
 class MyTokenObtainPairView(TokenObtainPairView):
     """
     This view uses our custom serializer to log in with email.
     """
     serializer_class = MyTokenObtainPairSerializer
-
-# --- (Rest of the file is the same) ---
 
 class UserRegisterView(generics.CreateAPIView):
     queryset = User.objects.all()

@@ -1,17 +1,13 @@
 from django.contrib import admin
 from django.urls import path, include
-# We don't need the default view anymore
 from rest_framework_simplejwt.views import TokenRefreshView
-# We import our new view
-from users.views import MyTokenObtainPairView
+from users.views import MyTokenObtainPairView # Import our custom view
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api-auth/', include('rest_framework.urls')),
 
     # Auth
-    # --- THIS IS THE FIX ---
-    # We are now using our custom view, not the default one
     path('api/auth/token/', MyTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/auth/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 

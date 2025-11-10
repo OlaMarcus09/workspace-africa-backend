@@ -1,6 +1,5 @@
 from rest_framework import serializers
 from .models import Plan, PartnerSpace, Subscription, CheckIn, CheckInToken
-# We NO LONGER import from users.serializers at the top
 
 class PlanSerializer(serializers.ModelSerializer):
     class Meta:
@@ -39,7 +38,6 @@ class SubscriptionCreateSerializer(serializers.Serializer):
             raise serializers.ValidationError("This payment has already been processed.")
         return value
 
-# --- THIS IS THE FIX ---
 class CheckInReportSerializer(serializers.ModelSerializer):
     user = serializers.StringRelatedField(read_only=True) # This is safe
     class Meta:
