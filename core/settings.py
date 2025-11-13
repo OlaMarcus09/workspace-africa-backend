@@ -2,24 +2,19 @@ import os
 from pathlib import Path
 from datetime import timedelta
 import dj_database_url
-import environ # <-- NEW
 
-# --- NEW: Read the .env file ---
 BASE_DIR = Path(__file__).resolve().parent.parent
-env = environ.Env()
-environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
-# --- END NEW ---
 
 # --- Paystack Keys ---
-PAYSTACK_SECRET_KEY = env('PAYSTACK_SECRET_KEY', default=None)
-SECRET_KEY = env('SECRET_KEY') # This now reads from .env or Render
+PAYSTACK_SECRET_KEY = os.environ.get('PAYSTACK_SECRET_KEY')
+SECRET_KEY = os.environ.get('SECRET_KEY')
 
-DEBUG = env('DEBUG', default=False)
-ALLOWED_HOSTS = env('ALLOWED_HOSTS', default='127.0.0.1').split(',')
+DEBUG = os.environ.get('DEBUG', 'False') == 'True'
+ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '127.0.0.1').split(',')
 
 # --- Frontend URLs (from Render Env) ---
-PAYMENT_SUCCESS_URL = env('PAYMENT_SUCCESS_URL', default='http://localhost:3000/payment-success')
-PAYMENT_CALLBACK_URL = env('PAYMENT_CALLBACK_URL', default='http://localhost:8000/api/payments/verify/')
+PAYMENT_SUCCESS_URL = os.environ.get('PAYMENT_SUCCESS_URL', 'http://localhost:3000/payment-success')
+PAYMENT_CALLBACK_URL = os.environ.get('PAYMENT_CALLBACK_URL', 'http://localhost:8000/api/payments/verify/')
 
 # Application definition
 INSTALLED_APPS = [
@@ -36,6 +31,8 @@ INSTALLED_APPS = [
     'spaces',
     'teams',
 ]
+
+# SAFE Middleware configuration
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
@@ -47,6 +44,7 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
 ROOT_URLCONF = 'core.urls'
 TEMPLATES = [
     {
@@ -67,57 +65,48 @@ WSGI_APPLICATION = 'core.wsgi.application'
 
 DATABASES = {
     'default': dj_database_url.config(
-        default=env('DATABASE_URL'), # <-- NEW
+        default=f'sqlite:///{BASE_DIR / "db.sqlite3"}',
         conn_max_age=600
     )
 }
+
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',},
     {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',},
     {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',},
     {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',},
 ]
+
 LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'Africa/Lagos'
 USE_I18N = True
 USE_TZ = True
+
 STATIC_URL = '/static/'
-STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATIC_ROOT = BASE_DIR / 'staticfiles' 
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
-STATICFILES_DIRS = [ BASE_DIR / "static", ]
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
 AUTH_USER_MODEL = 'users.CustomUser'
-CORS_ALLOWED_ORIGINS = env('CORS_ALLOWED_ORIGINS').split(',')
+
+CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:3000,http://localhost:3001,http://localhost:3002').split(',')
+
 REST_FRAMEWORK = {
     'DEFAULT_RENDERER_CLASSES': [
-        'rest_framework.renderers.BrowsableAPIRenderer',
         'rest_framework.renderers.JSONRenderer',
+        'rest_framework.renderers.BrowsableAPIRenderer',
     ],
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework_simplejwt.authentication.JWTAuthentication',
-        'django.contrib.auth.middleware.AuthenticationMiddleware', # <-- FIX
-        'rest_framework.authentication.SessionAuthentication', 
     ],
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
 }
+
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=5),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=90),
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
-}
-LOGGING = {
-    'version': 1,
-    'disable_existing_loggers': False,
-    'handlers': {
-        'console': {
-            'class': 'logging.StreamHandler',
-        },
-    },
-    'root': {
-        'handlers': ['console'],
-        'level': 'WARNING',
-    },
 }

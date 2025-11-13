@@ -1,9 +1,6 @@
 from django.contrib.auth import get_user_model
 from rest_framework import generics, permissions
 from rest_framework_simplejwt.views import TokenObtainPairView
-from rest_framework.response import Response
-from rest_framework.views import APIView
-import traceback
 from .serializers import (
     UserRegisterSerializer, 
     UserProfileSerializer,
@@ -20,17 +17,10 @@ class UserRegisterView(generics.CreateAPIView):
     serializer_class = UserRegisterSerializer
     permission_classes = [permissions.AllowAny] 
 
-class UserProfileView(APIView):
+class UserProfileView(generics.RetrieveAPIView):
+    queryset = User.objects.all()
+    serializer_class = UserProfileSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-    def get(self, request):
-        try:
-            user = request.user
-            serializer = UserProfileSerializer(user)
-            return Response(serializer.data)
-        except Exception as e:
-            # Return the actual error for debugging
-            return Response({
-                'error': str(e),
-                'traceback': traceback.format_exc()
-            }, status=500)
+    def get_object(self):
+        return self.request.user
