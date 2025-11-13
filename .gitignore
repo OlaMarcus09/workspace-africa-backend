@@ -1,17 +1,8 @@
-# Virtual Environment
-venv/
-
-# Python cache
-__pycache__/
+*.sqlite3
 *.pyc
-
-# OS-specific
+__pycache__/
+*.log
+.env
 .DS_Store
-Thumbs.db
-
-# IDE
-.idea/
-.vscode/
-
-# Local settings
-*.local
+staticfiles/
+venv/
