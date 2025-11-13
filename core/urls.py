@@ -47,3 +47,12 @@ def debug_db(request):
 urlpatterns += [
     path('debug-db/', debug_db, name='debug_db'),
 ]
+
+from django.http import JsonResponse
+
+def health_check(request):
+    return JsonResponse({"status": "healthy", "message": "API is working"})
+
+urlpatterns += [
+    path('health/', health_check, name='health_check'),
+]
