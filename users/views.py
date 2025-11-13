@@ -3,16 +3,13 @@ from rest_framework import generics, permissions
 from rest_framework_simplejwt.views import TokenObtainPairView
 from .serializers import (
     UserRegisterSerializer, 
-    UserProfileSerializer,
-    MyTokenObtainPairSerializer # <-- Import our new serializer
+    UserProfileSerializer,  # Use the SIMPLE serializer
+    MyTokenObtainPairSerializer
 )
 
 User = get_user_model()
 
 class MyTokenObtainPairView(TokenObtainPairView):
-    """
-    This view uses our custom serializer to log in with email.
-    """
     serializer_class = MyTokenObtainPairSerializer
 
 class UserRegisterView(generics.CreateAPIView):
@@ -22,7 +19,7 @@ class UserRegisterView(generics.CreateAPIView):
 
 class UserProfileView(generics.RetrieveAPIView):
     queryset = User.objects.all()
-    serializer_class = UserProfileSerializer
+    serializer_class = UserProfileSerializer  # Use simple version
     permission_classes = [permissions.IsAuthenticated]
 
     def get_object(self):
