@@ -17,3 +17,9 @@ urlpatterns = [
     
     path('', include(router.urls)),
 ]
+
+from .add_subscription import add_subscription_to_team
+
+urlpatterns += [
+    path('add-subscription/', add_subscription_to_team, name='add-subscription'),
+]

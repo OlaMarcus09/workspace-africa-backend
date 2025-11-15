@@ -1,8 +1,50 @@
-*.sqlite3
+# Django
 *.pyc
 __pycache__/
-*.log
-.env
-.DS_Store
-staticfiles/
+*.pyo
+*.pyd
+.Python
+env/
 venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Database
+*.sqlite3
+*.db
+
+# Static files
+staticfiles/
+media/
+
+# Environment variables
+.env
+.env.local
+.env.prod
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Coverage
+htmlcov/
+.coverage
+.coverage.*
+.coverage
+*.cover
+.hypothesis/
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
