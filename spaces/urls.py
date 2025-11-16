@@ -28,3 +28,22 @@ urlpatterns = [
     path('partner/dashboard/', PartnerDashboardView.as_view(), name='partner_dashboard'),
     path('partner/reports/', PartnerReportView.as_view(), name='partner_reports'), # <-- NEW
 ]
+
+from .analytics_views import UserAnalyticsView
+
+# Add to urlpatterns:
+path('analytics/', UserAnalyticsView.as_view(), name='user_analytics'),
+
+
+from .analytics_views import UserAnalyticsView
+
+# Add to urlpatterns:
+path('analytics/', UserAnalyticsView.as_view(), name='user_analytics'),
+
+
+from .analytics_views import UserAnalyticsView
+
+urlpatterns += [
+    path('analytics/', UserAnalyticsView.as_view(), name='user_analytics'),
+]
+
