@@ -47,3 +47,10 @@ urlpatterns += [
     path('analytics/', UserAnalyticsView.as_view(), name='user_analytics'),
 ]
 
+
+from .partner_application import PartnerApplicationView
+
+urlpatterns += [
+    path('partner/apply/', PartnerApplicationView.as_view(), name='partner_apply'),
+]
+

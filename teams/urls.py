@@ -23,3 +23,10 @@ from .add_subscription import add_subscription_to_team
 urlpatterns += [
     path('add-subscription/', add_subscription_to_team, name='add-subscription'),
 ]
+
+from .team_signup import TeamSignupView
+
+urlpatterns += [
+    path('signup/', TeamSignupView.as_view(), name='team_signup'),
+]
+
