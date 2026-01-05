@@ -2,6 +2,7 @@ from pathlib import Path
 import os
 import dj_database_url
 
+# Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
@@ -30,7 +31,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware',
+    # 'whitenoise.middleware.WhiteNoiseMiddleware',  <-- REMOVED
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -81,10 +82,11 @@ TIME_ZONE = 'UTC'
 USE_I18N = True
 USE_TZ = True
 
-STATIC_URL = 'static/'
-STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
-# SIMPLIFIED STORAGE TO PREVENT CRASHES
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedStaticFilesStorage'
+# --- STATIC FILES CONFIGURATION (VERCEL PUBLIC FOLDER) ---
+STATIC_URL = '/static/'
+# This puts files where Vercel expects them (root/public/static)
+STATIC_ROOT = os.path.join(BASE_DIR, 'public', 'static') 
+STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.StaticFilesStorage'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL = 'users.CustomUser'

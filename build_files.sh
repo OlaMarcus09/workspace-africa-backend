@@ -1,11 +1,8 @@
 #!/bin/bash
-
-# Install all dependencies
 echo "Installing Requirements..."
 pip install -r requirements.txt
 
-# Create the static files (CSS/JS)
-echo "Collecting Static Files..."
+echo "Collecting Static Files to /public/static..."
 python3.9 manage.py collectstatic --noinput --clear
 
-echo "Build Process Completed!"
+echo "Build Completed!"
