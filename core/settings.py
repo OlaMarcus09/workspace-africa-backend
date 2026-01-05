@@ -2,7 +2,6 @@ from pathlib import Path
 import os
 import dj_database_url
 
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
@@ -31,7 +30,6 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    # 'whitenoise.middleware.WhiteNoiseMiddleware',  <-- REMOVED
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -61,7 +59,6 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'core.wsgi.application'
 
-# NEON DATABASE CONNECTION
 DATABASES = {
     'default': dj_database_url.config(
         default='postgresql://neondb_owner:npg_DuK7yGj2CzIf@ep-red-rain-agfmlw3u-pooler.c-2.eu-central-1.aws.neon.tech/neondb?sslmode=require',
@@ -82,10 +79,10 @@ TIME_ZONE = 'UTC'
 USE_I18N = True
 USE_TZ = True
 
-# --- STATIC FILES CONFIGURATION (VERCEL PUBLIC FOLDER) ---
+# --- STATIC FILES CONFIGURATION (EXPLICIT BUILD) ---
 STATIC_URL = '/static/'
-# This puts files where Vercel expects them (root/public/static)
-STATIC_ROOT = os.path.join(BASE_DIR, 'public', 'static') 
+# We use a specific named folder so Vercel can't miss it
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles_build', 'static')
 STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.StaticFilesStorage'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
