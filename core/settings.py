@@ -27,7 +27,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware', # SERVES STATIC FILES
+    # Whitenoise is REMOVED. Vercel will handle files directly.
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -77,11 +77,10 @@ TIME_ZONE = 'UTC'
 USE_I18N = True
 USE_TZ = True
 
-# --- THE RUNTIME FIX ---
+# --- STATIC FILES CONFIGURATION ---
 STATIC_URL = '/static/'
-# We use /tmp because it is the only writable directory in Serverless
-STATIC_ROOT = '/tmp/static' 
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedStaticFilesStorage'
+# We point this to a folder named 'public'. Vercel LOVES this folder.
+STATIC_ROOT = os.path.join(BASE_DIR, 'public', 'static')
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL = 'users.CustomUser'
