@@ -7,7 +7,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = 'django-insecure-new-neon-vercel-key-CHANGE-THIS-IN-ENV-LATER'
 
-DEBUG = True
+DEBUG = False # Turn off Debug to test real static file serving
 
 ALLOWED_HOSTS = ['*', '.vercel.app', 'localhost', '127.0.0.1']
 
@@ -30,6 +30,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware', # THE FIX: Serve files via Python
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -79,11 +80,11 @@ TIME_ZONE = 'UTC'
 USE_I18N = True
 USE_TZ = True
 
-# --- STATIC FILES CONFIGURATION (EXPLICIT BUILD) ---
+# --- STATIC FILES CONFIGURATION (WHITENOISE) ---
 STATIC_URL = '/static/'
-# We use a specific named folder so Vercel can't miss it
-STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles_build', 'static')
-STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.StaticFilesStorage'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+# Use Compressed storage (Safe for Vercel)
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedStaticFilesStorage'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL = 'users.CustomUser'
