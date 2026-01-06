@@ -2,7 +2,7 @@
 echo "Installing Requirements..."
 pip install -r requirements.txt
 
-echo "Collecting Static Files..."
-python3.9 manage.py collectstatic --noinput --clear
+# REMOVED: collectstatic --clear
+# We are relying on the 'public' folder that is already in Git.
 
 echo "Build Completed!"
