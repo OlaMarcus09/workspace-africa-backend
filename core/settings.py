@@ -1,12 +1,12 @@
+from pathlib import Path
 import os
 import dj_database_url
-from pathlib import Path
 
-# DeepSeek Recommended BASE_DIR setup
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Current file is core/settings.py, so parent.parent is root
+BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = 'django-insecure-new-neon-vercel-key-CHANGE-THIS-IN-ENV-LATER'
-DEBUG = False
+DEBUG = False 
 
 ALLOWED_HOSTS = ['*', '.vercel.app', 'localhost', '127.0.0.1']
 CSRF_TRUSTED_ORIGINS = ['https://*.vercel.app']
@@ -28,7 +28,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    # Whitenoise is REMOVED
+    'whitenoise.middleware.WhiteNoiseMiddleware', # 1. ENABLE THIS
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -80,8 +80,10 @@ USE_TZ = True
 
 # --- STATIC FILES CONFIGURATION ---
 STATIC_URL = '/static/'
-# Explicitly pointing to the public folder at root
+# 2. Point to the folder we know exists in Git
 STATIC_ROOT = os.path.join(BASE_DIR, 'public', 'static')
+# 3. Use Simple Storage (No Manifest) to prevent 500 errors if files change
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedStaticFilesStorage'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL = 'users.CustomUser'
