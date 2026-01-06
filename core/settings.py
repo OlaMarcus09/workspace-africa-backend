@@ -1,8 +1,9 @@
-from pathlib import Path
 import os
 import dj_database_url
+from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+# DeepSeek Recommended BASE_DIR setup
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 SECRET_KEY = 'django-insecure-new-neon-vercel-key-CHANGE-THIS-IN-ENV-LATER'
 DEBUG = False
@@ -27,7 +28,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    # Whitenoise is REMOVED. Vercel will handle files directly.
+    # Whitenoise is REMOVED
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -79,7 +80,7 @@ USE_TZ = True
 
 # --- STATIC FILES CONFIGURATION ---
 STATIC_URL = '/static/'
-# We point this to a folder named 'public'. Vercel LOVES this folder.
+# Explicitly pointing to the public folder at root
 STATIC_ROOT = os.path.join(BASE_DIR, 'public', 'static')
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
