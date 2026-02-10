@@ -31,6 +31,16 @@ class PartnerSpace(models.Model):
         help_text="Amount (NGN) paid to partner per check-in"
     )
 
+    # --- NEW FIELDS ADDED ---
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.CASCADE, 
+        related_name='owned_spaces',
+        null=True, 
+        blank=True
+    )
+    is_active = models.BooleanField(default=True)
+
     def __str__(self):
         return self.name
 
@@ -47,7 +57,6 @@ class Subscription(models.Model):
     end_date = models.DateField(blank=True, null=True, help_text="When the subscription expires")
     is_active = models.BooleanField(default=True)
     
-    # --- NEW FIELD ---
     paystack_reference = models.CharField(max_length=100, blank=True, null=True, unique=True)
 
     def __str__(self):

@@ -10,11 +10,13 @@ def create_partner_space(sender, instance, created, **kwargs):
     Triggers on User model save.
     """
     if created and instance.user_type == 'PARTNER':
-        PartnerSpace.objects.create(
-            owner=instance,
-            name=f"{instance.username}'s Space",
-            address="Please update your address in Settings",
-            city="Ibadan", 
-            access_tier="STANDARD",
-            is_active=True
-        )
+        # Check if they already have a space (to prevent duplicates if seeding)
+        if not PartnerSpace.objects.filter(owner=instance).exists():
+            PartnerSpace.objects.create(
+                owner=instance,
+                name=f"{instance.username}'s Space",
+                address="Please update your address in Settings",
+                # Removed 'city' because it is not in the model
+                access_tier="STANDARD",
+                is_active=True
+            )
