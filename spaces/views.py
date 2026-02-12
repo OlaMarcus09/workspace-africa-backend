@@ -2,6 +2,7 @@ from django.conf import settings
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.db import transaction
+from django.contrib.auth import get_user_model  # ADD THIS LINE
 from rest_framework import viewsets, permissions, generics, status
 from rest_framework.response import Response
 import requests
@@ -20,6 +21,9 @@ from .permissions import IsPartnerUser
 
 PAYSTACK_SECRET_KEY = settings.PAYSTACK_SECRET_KEY
 PAYSTACK_BASE_URL = "https://api.paystack.co"
+
+# Get the User model
+User = get_user_model()  # ADD THIS LINE
 
 class PlanViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Plan.objects.all().order_by('price_ngn')
@@ -249,15 +253,15 @@ class PaymentVerifyView(generics.GenericAPIView):
                         "error": "Could not identify Plan from transaction data. No plan_id in metadata and no plan code in response."
                     }, status=400)
 
-            # 3. Get user by email
+            # 3. Get user by email - FIXED: Use the User model, not settings.AUTH_USER_MODEL
             user_email = data['customer']['email']
             print(f"Looking for user with email: {user_email}")
             
             try:
-                user = get_object_or_404(settings.AUTH_USER_MODEL, email=user_email)
+                user = User.objects.get(email=user_email)  # CHANGED THIS LINE
                 print(f"Found user: {user.id} - {user.email}")
-            except Exception as e:
-                print(f"ERROR: User not found: {str(e)}")
+            except User.DoesNotExist:  # CHANGED THIS LINE
+                print(f"ERROR: User not found with email: {user_email}")
                 return Response({
                     "error": f"User with email {user_email} not found"
                 }, status=404)
