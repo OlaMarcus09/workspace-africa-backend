@@ -56,13 +56,14 @@ class UserProfileSerializerDetailed(serializers.ModelSerializer):
     plan_name = serializers.SerializerMethodField()
     days_used = serializers.SerializerMethodField()
     total_days = serializers.SerializerMethodField()
+    total_checkins = serializers.SerializerMethodField() # FIX: Added to resolve "0 LIFETIME" logins
 
     class Meta:
         model = User
         fields = (
             'id', 'email', 'username', 'photo_url', 'user_type',
             'team', 'managed_space', 'subscription', 'plan_name', 
-            'days_used', 'total_days'
+            'days_used', 'total_days', 'total_checkins'
         )
     
     def get_subscription(self, obj):
@@ -75,6 +76,10 @@ class UserProfileSerializerDetailed(serializers.ModelSerializer):
     def get_plan_name(self, obj):
         sub = obj.subscriptions.filter(is_active=True).first()
         return sub.plan.name if sub else "FREE_TIER"
+
+    def get_total_checkins(self, obj):
+        # FIX: Returns the total count of all check-in records for the user
+        return obj.check_ins.count()
 
     def get_days_used(self, obj):
         sub = obj.subscriptions.filter(is_active=True).first()
@@ -91,8 +96,8 @@ class UserProfileSerializerDetailed(serializers.ModelSerializer):
             return 0
         
         # --- LOGIC UPDATED ---
-        # Since you set FLEX_UNLIMITED to 30, we return 999 to signal 
-        # "Unlimited" to the frontend modal and analytics page.
+        # Since FLEX_UNLIMITED is set to 30 in the database,
+        # we return 999 to signal "Unlimited" to the frontend components.
         days = sub.plan.included_days
         return 999 if days >= 30 else days
 
