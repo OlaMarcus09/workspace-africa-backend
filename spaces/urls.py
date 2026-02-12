@@ -8,49 +8,31 @@ from .views import (
     PartnerDashboardView,
     PaymentInitializeView,
     PaymentVerifyView,
-    PartnerReportView # <-- Import new
+    PartnerReportView
 )
+from .analytics_views import UserAnalyticsView
+from .partner_application import PartnerApplicationView
 
 router = DefaultRouter()
 router.register(r'plans', PlanViewSet)
 router.register(r'spaces', PartnerSpaceViewSet)
 
 urlpatterns = [
-    path('', include(router.urls)),
+    # 1. SPECIFIC PATHS FIRST (Prevents 405 Method Not Allowed)
+    # This must match your frontend call exactly: /api/spaces/generate-token/
+    path('spaces/generate-token/', GenerateCheckInTokenView.as_view(), name='generate_token'),
     
-    # Subscriber endpoints
-    path('check-in/generate/', GenerateCheckInTokenView.as_view(), name='generate_check_in_token'),
+    # 2. Subscriber & Payment endpoints
     path('payments/initialize/', PaymentInitializeView.as_view(), name='payment_initialize'),
     path('payments/verify/', PaymentVerifyView.as_view(), name='payment_verify'),
     
-    # Partner-only endpoints
+    # 3. Partner & Analytics endpoints
     path('check-in/validate/', CheckInValidateView.as_view(), name='validate_check_in_token'),
     path('partner/dashboard/', PartnerDashboardView.as_view(), name='partner_dashboard'),
-    path('partner/reports/', PartnerReportView.as_view(), name='partner_reports'), # <-- NEW
-]
-
-from .analytics_views import UserAnalyticsView
-
-# Add to urlpatterns:
-path('analytics/', UserAnalyticsView.as_view(), name='user_analytics'),
-
-
-from .analytics_views import UserAnalyticsView
-
-# Add to urlpatterns:
-path('analytics/', UserAnalyticsView.as_view(), name='user_analytics'),
-
-
-from .analytics_views import UserAnalyticsView
-
-urlpatterns += [
-    path('analytics/', UserAnalyticsView.as_view(), name='user_analytics'),
-]
-
-
-from .partner_application import PartnerApplicationView
-
-urlpatterns += [
+    path('partner/reports/', PartnerReportView.as_view(), name='partner_reports'),
     path('partner/apply/', PartnerApplicationView.as_view(), name='partner_apply'),
-]
+    path('analytics/', UserAnalyticsView.as_view(), name='user_analytics'),
 
+    # 4. ROUTER LAST
+    path('', include(router.urls)),
+]
