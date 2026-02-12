@@ -35,6 +35,9 @@ class PartnerSpaceViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = PartnerSpaceSerializer
 
 class GenerateCheckInTokenView(generics.GenericAPIView):
+    """
+    Handles the generation of a 6-digit access code for subscribers.
+    """
     serializer_class = CheckInTokenSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -42,20 +45,20 @@ class GenerateCheckInTokenView(generics.GenericAPIView):
     def post(self, request, *args, **kwargs):
         user = request.user
         
-        # Ensure user is authenticated
+        # 1. Validation: Ensure user is authenticated and not anonymous
         if not user or user.is_anonymous:
             return Response({"error": "Authentication required."}, status=status.HTTP_401_UNAUTHORIZED)
 
         now = timezone.now()
         
         try:
-            # Fetch active subscription
+            # 2. Validation: Check for an active subscription
             sub = user.subscriptions.filter(is_active=True).first()
             
             if not sub:
                 return Response({"error": "No active subscription found."}, status=status.HTTP_403_FORBIDDEN)
             
-            # Check for expiry
+            # 3. Validation: Check for expiry
             if sub.end_date and sub.end_date < now.date():
                 sub.is_active = False
                 sub.save()
@@ -64,7 +67,7 @@ class GenerateCheckInTokenView(generics.GenericAPIView):
         except Exception as e:
             return Response({"error": f"Authorization check failed: {str(e)}"}, status=status.HTTP_403_FORBIDDEN)
 
-        # Calculate usage based on distinct dates since subscription start
+        # 4. Usage Tracking: Count distinct check-in days for the current plan cycle
         start_date = sub.start_date
         used_dates_qs = CheckIn.objects.filter(
             user=user, 
@@ -78,12 +81,12 @@ class GenerateCheckInTokenView(generics.GenericAPIView):
         today = now.date()
         is_already_checked_in_today = today in used_dates
 
-        # If it's a new day, check against plan limits
+        # 5. Plan Limits: Prevent new bookings if monthly limit reached
         if not is_already_checked_in_today:
             if days_used_count >= total_days_allowed:
                 return Response({"error": "Monthly plan limit reached."}, status=status.HTTP_403_FORBIDDEN)
 
-        # Refresh the token (delete old, create new)
+        # 6. Token Generation: Clear existing tokens and create a fresh one
         CheckInToken.objects.filter(user=user).delete()
         token = CheckInToken.objects.create(user=user)
         
@@ -196,7 +199,7 @@ class PaymentVerifyView(generics.GenericAPIView):
             data = resp_json['data']
             metadata = data.get('metadata', {})
             
-            # 1. Identify Plan via Metadata or Plan Code
+            # Identify Plan
             plan_id = metadata.get('plan_id') if isinstance(metadata, dict) else None
             plan = None
 
@@ -212,17 +215,17 @@ class PaymentVerifyView(generics.GenericAPIView):
             if not plan:
                 return Response({"error": "Could not identify plan for this transaction"}, status=400)
 
-            # 2. Identify User
+            # Identify User
             user_email = data['customer']['email']
             user = User.objects.filter(email=user_email).first()
             if not user:
                 return Response({"error": "User associated with payment not found"}, status=404)
 
-            # 3. Prevent Duplicate Processing
+            # Prevent Duplicate Processing
             if Subscription.objects.filter(paystack_reference=reference).exists():
                 return Response({"status": "success", "message": "Transaction already processed"}, status=200)
 
-            # 4. Activate New Subscription
+            # Activate New Subscription
             user.subscriptions.filter(is_active=True).update(is_active=False)
 
             Subscription.objects.create(
