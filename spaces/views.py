@@ -114,23 +114,62 @@ class PartnerDashboardView(generics.RetrieveAPIView):
 
 class PaymentInitializeView(generics.GenericAPIView):
     permission_classes = [permissions.IsAuthenticated]
+    
     def post(self, request, *args, **kwargs):
         user = request.user
         plan_id = request.data.get('plan_id')
+        
+        if not plan_id:
+            return Response({"error": "plan_id is required"}, status=400)
+        
         plan = get_object_or_404(Plan, id=plan_id)
         callback_url = getattr(settings, 'PAYMENT_CALLBACK_URL', 'https://workspace-nomad.vercel.app/payment-success')
-        headers = {"Authorization": f"Bearer {PAYSTACK_SECRET_KEY}","Content-Type": "application/json"}
+        
+        headers = {
+            "Authorization": f"Bearer {PAYSTACK_SECRET_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        # IMPORTANT: Send metadata as strings for better compatibility
         data = {
             "email": user.email,
-            "amount": int(plan.price_ngn * 100),
-            "plan": plan.paystack_plan_code,
+            "amount": int(plan.price_ngn * 100),  # Convert to kobo
             "callback_url": callback_url,
-            "metadata": {"user_id": user.id, "plan_id": plan.id}
+            "metadata": {
+                "user_id": str(user.id),      # Convert to string
+                "plan_id": str(plan.id),      # Convert to string
+                "user_email": user.email,     # Backup
+                "plan_name": plan.name        # For debugging
+            }
         }
+        
+        # Only add plan code if it exists (for subscription plans)
+        if plan.paystack_plan_code:
+            data["plan"] = plan.paystack_plan_code
+        
+        print(f"Initializing payment for user {user.email}, plan {plan.name}")
+        print(f"Sending to Paystack: {data}")
+        
         try:
-            response = requests.post(f"{PAYSTACK_BASE_URL}/transaction/initialize", headers=headers, json=data)
-            return Response(response.json()['data'], status=status.HTTP_200_OK)
+            response = requests.post(
+                f"{PAYSTACK_BASE_URL}/transaction/initialize", 
+                headers=headers, 
+                json=data
+            )
+            response_data = response.json()
+            
+            if response_data.get('status'):
+                print(f"Payment initialized successfully: {response_data['data'].get('reference')}")
+                return Response(response_data['data'], status=status.HTTP_200_OK)
+            else:
+                print(f"Paystack error: {response_data}")
+                return Response({
+                    "error": "Payment initialization failed",
+                    "details": response_data.get('message', 'Unknown error')
+                }, status=400)
+                
         except Exception as e:
+            print(f"Exception during payment init: {str(e)}")
             return Response({"error": str(e)}, status=500)
 
 class PaymentVerifyView(generics.GenericAPIView):
@@ -149,65 +188,126 @@ class PaymentVerifyView(generics.GenericAPIView):
             resp = requests.get(f"{PAYSTACK_BASE_URL}/transaction/verify/{reference}", headers=headers)
             resp_json = resp.json()
             
+            # Log the full response for debugging
+            print(f"=== PAYSTACK RESPONSE ===")
+            print(f"Full response: {resp_json}")
+            
             if not resp_json.get('status') or resp_json['data']['status'] != 'success':
-                return Response({"error": "Paystack says payment failed or is incomplete."}, status=400)
+                return Response({
+                    "error": "Paystack says payment failed or is incomplete.",
+                    "details": resp_json.get('message', 'Unknown error')
+                }, status=400)
 
             data = resp_json['data']
             
-            # 2. Extract Plan Code safely
-            plan_code = None
-            if 'plan' in data and data['plan']:
-                if isinstance(data['plan'], dict):
-                    plan_code = data['plan'].get('plan_code') or data['plan'].get('code')
-                else:
-                    plan_code = data['plan']
+            # 2. FIXED: Get plan_id from metadata FIRST (most reliable)
+            plan = None
+            plan_id = None
             
-            # Fallback to metadata
-            if not plan_code and 'metadata' in data:
-                 if isinstance(data['metadata'], dict):
-                     plan_id = data['metadata'].get('plan_id')
-                     if plan_id:
-                         plan_obj = Plan.objects.get(id=plan_id)
-                         plan_code = plan_obj.paystack_plan_code
+            # Try to get plan_id from metadata
+            if 'metadata' in data and data['metadata']:
+                if isinstance(data['metadata'], dict):
+                    plan_id = data['metadata'].get('plan_id')
+                    print(f"Found plan_id in metadata: {plan_id}")
+            
+            # If we have plan_id from metadata, use it directly
+            if plan_id:
+                try:
+                    plan = Plan.objects.get(id=plan_id)
+                    print(f"Successfully found plan: {plan.name} (ID: {plan.id})")
+                except Plan.DoesNotExist:
+                    print(f"ERROR: Plan with ID {plan_id} not found in database")
+                    return Response({
+                        "error": f"Plan with ID {plan_id} not found in database"
+                    }, status=400)
+            else:
+                # Fallback: Try to extract plan code from Paystack response
+                plan_code = None
+                if 'plan' in data and data['plan']:
+                    if isinstance(data['plan'], dict):
+                        plan_code = data['plan'].get('plan_code') or data['plan'].get('code')
+                    elif isinstance(data['plan'], str):
+                        plan_code = data['plan']
+                
+                print(f"Extracted plan_code from Paystack: {plan_code}")
+                
+                if plan_code:
+                    try:
+                        plan = Plan.objects.get(paystack_plan_code=plan_code)
+                        print(f"Found plan by code: {plan.name}")
+                    except Plan.DoesNotExist:
+                        # List all available plans for debugging
+                        all_plans = list(Plan.objects.all().values('id', 'name', 'paystack_plan_code'))
+                        print(f"Available plans in database: {all_plans}")
+                        return Response({
+                            "error": f"Plan with code '{plan_code}' not found in database",
+                            "available_plans": all_plans
+                        }, status=400)
+                else:
+                    print("ERROR: Could not extract plan information from transaction")
+                    return Response({
+                        "error": "Could not identify Plan from transaction data. No plan_id in metadata and no plan code in response."
+                    }, status=400)
 
-            if not plan_code:
-                return Response({"error": "Could not identify Plan Code from transaction data."}, status=400)
-
-            # 3. Create Subscription
+            # 3. Get user by email
             user_email = data['customer']['email']
-            user = get_object_or_404(settings.AUTH_USER_MODEL, email=user_email)
-            plan = get_object_or_404(Plan, paystack_plan_code=plan_code)
+            print(f"Looking for user with email: {user_email}")
+            
+            try:
+                user = get_object_or_404(settings.AUTH_USER_MODEL, email=user_email)
+                print(f"Found user: {user.id} - {user.email}")
+            except Exception as e:
+                print(f"ERROR: User not found: {str(e)}")
+                return Response({
+                    "error": f"User with email {user_email} not found"
+                }, status=404)
 
+            # 4. Check if already processed
             if Subscription.objects.filter(paystack_reference=reference).exists():
-                return Response({"error": "Transaction already processed"}, status=400)
+                print(f"WARNING: Transaction {reference} already processed")
+                return Response({
+                    "error": "Transaction already processed",
+                    "message": "This payment has already been recorded"
+                }, status=400)
 
-            # Deactivate old ones
-            user.subscriptions.update(is_active=False)
+            # 5. Deactivate old subscriptions
+            old_subs_count = user.subscriptions.filter(is_active=True).update(is_active=False)
+            print(f"Deactivated {old_subs_count} old subscriptions")
 
-            # Create new one
-            Subscription.objects.create(
+            # 6. Create new subscription
+            subscription = Subscription.objects.create(
                 user=user, 
                 plan=plan, 
                 paystack_reference=reference, 
                 is_active=True,
                 start_date=timezone.now().date()
             )
+            
+            print(f"SUCCESS: Created subscription {subscription.id} for user {user.email}")
+            print(f"Plan: {plan.name}, Reference: {reference}")
 
-            # --- CHANGE: Instead of redirect(), return JSON ---
-            # This prevents the 500 error caused by Axios trying to follow a redirect
             return Response({
                 "status": "success", 
-                "message": "Subscription activated successfully"
+                "message": "Subscription activated successfully",
+                "subscription": {
+                    "plan": plan.name,
+                    "reference": reference,
+                    "start_date": subscription.start_date.isoformat()
+                }
             }, status=200)
 
         except Exception as e:
-            # Send the real error back to the frontend alert
             error_trace = traceback.format_exc()
+            print("=== CRITICAL ERROR ===")
+            print(f"Error: {str(e)}")
             print(error_trace)
+            print("======================")
+            
             return Response({
                 "error": "Internal Processing Error",
                 "message": str(e),
-                "trace": error_trace
+                "reference": reference,
+                "hint": "Check server logs for full traceback"
             }, status=500)
 
 class PartnerReportView(generics.ListAPIView):
