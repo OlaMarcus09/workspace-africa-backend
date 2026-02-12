@@ -2,7 +2,7 @@ from django.conf import settings
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.db import transaction
-from django.contrib.auth import get_user_model  # ADD THIS LINE
+from django.contrib.auth import get_user_model
 from rest_framework import viewsets, permissions, generics, status
 from rest_framework.response import Response
 import requests
@@ -23,7 +23,7 @@ PAYSTACK_SECRET_KEY = settings.PAYSTACK_SECRET_KEY
 PAYSTACK_BASE_URL = "https://api.paystack.co"
 
 # Get the User model
-User = get_user_model()  # ADD THIS LINE
+User = get_user_model()
 
 class PlanViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Plan.objects.all().order_by('price_ngn')
@@ -60,9 +60,9 @@ class GenerateCheckInTokenView(generics.GenericAPIView):
         total_days_allowed = sub.plan.included_days
 
         today = now.date()
-        is_new_day_visit = today not in used_dates
+        is_new_day_visit = today in used_dates
 
-        if is_new_day_visit:
+        if not is_new_day_visit: # It's a new day visit
             if days_used_count >= total_days_allowed:
                 return Response({"error": "Plan limit reached."}, status=status.HTTP_403_FORBIDDEN)
 
@@ -74,7 +74,7 @@ class GenerateCheckInTokenView(generics.GenericAPIView):
             **serializer.data,
             "meta": {
                 "plan": sub.plan.name,
-                "days_used": days_used_count + (1 if is_new_day_visit else 0),
+                "days_used": days_used_count + (0 if is_new_day_visit else 1),
                 "days_total": total_days_allowed
             }
         }, status=status.HTTP_201_CREATED)
@@ -89,7 +89,6 @@ class CheckInValidateView(generics.GenericAPIView):
         serializer.is_valid(raise_exception=True)
         code = serializer.validated_data['code']
         space_id = serializer.validated_data['space_id']
-        now = timezone.now()
 
         if request.user.managed_space.id != space_id:
             return Response({"error": "Unauthorized space."}, status=status.HTTP_403_FORBIDDEN)
@@ -134,46 +133,28 @@ class PaymentInitializeView(generics.GenericAPIView):
             "Content-Type": "application/json"
         }
         
-        # IMPORTANT: Send metadata as strings for better compatibility
         data = {
             "email": user.email,
-            "amount": int(plan.price_ngn * 100),  # Convert to kobo
+            "amount": int(plan.price_ngn * 100),
             "callback_url": callback_url,
             "metadata": {
-                "user_id": str(user.id),      # Convert to string
-                "plan_id": str(plan.id),      # Convert to string
-                "user_email": user.email,     # Backup
-                "plan_name": plan.name        # For debugging
+                "user_id": str(user.id),
+                "plan_id": str(plan.id),
+                "user_email": user.email,
+                "plan_name": plan.name
             }
         }
         
-        # Only add plan code if it exists (for subscription plans)
         if plan.paystack_plan_code:
             data["plan"] = plan.paystack_plan_code
         
-        print(f"Initializing payment for user {user.email}, plan {plan.name}")
-        print(f"Sending to Paystack: {data}")
-        
         try:
-            response = requests.post(
-                f"{PAYSTACK_BASE_URL}/transaction/initialize", 
-                headers=headers, 
-                json=data
-            )
+            response = requests.post(f"{PAYSTACK_BASE_URL}/transaction/initialize", headers=headers, json=data)
             response_data = response.json()
-            
             if response_data.get('status'):
-                print(f"Payment initialized successfully: {response_data['data'].get('reference')}")
                 return Response(response_data['data'], status=status.HTTP_200_OK)
-            else:
-                print(f"Paystack error: {response_data}")
-                return Response({
-                    "error": "Payment initialization failed",
-                    "details": response_data.get('message', 'Unknown error')
-                }, status=400)
-                
+            return Response({"error": response_data.get('message', 'Initialization failed')}, status=400)
         except Exception as e:
-            print(f"Exception during payment init: {str(e)}")
             return Response({"error": str(e)}, status=500)
 
 class PaymentVerifyView(generics.GenericAPIView):
@@ -188,97 +169,46 @@ class PaymentVerifyView(generics.GenericAPIView):
         headers = {"Authorization": f"Bearer {PAYSTACK_SECRET_KEY}"}
         
         try:
-            # 1. Fetch from Paystack
             resp = requests.get(f"{PAYSTACK_BASE_URL}/transaction/verify/{reference}", headers=headers)
             resp_json = resp.json()
             
-            # Log the full response for debugging
-            print(f"=== PAYSTACK RESPONSE ===")
-            print(f"Full response: {resp_json}")
-            
             if not resp_json.get('status') or resp_json['data']['status'] != 'success':
-                return Response({
-                    "error": "Paystack says payment failed or is incomplete.",
-                    "details": resp_json.get('message', 'Unknown error')
-                }, status=400)
+                return Response({"error": "Payment verification failed"}, status=400)
 
             data = resp_json['data']
+            metadata = data.get('metadata', {})
             
-            # 2. FIXED: Get plan_id from metadata FIRST (most reliable)
+            # 1. Identify Plan
+            plan_id = metadata.get('plan_id') if isinstance(metadata, dict) else None
             plan = None
-            plan_id = None
-            
-            # Try to get plan_id from metadata
-            if 'metadata' in data and data['metadata']:
-                if isinstance(data['metadata'], dict):
-                    plan_id = data['metadata'].get('plan_id')
-                    print(f"Found plan_id in metadata: {plan_id}")
-            
-            # If we have plan_id from metadata, use it directly
+
             if plan_id:
-                try:
-                    plan = Plan.objects.get(id=plan_id)
-                    print(f"Successfully found plan: {plan.name} (ID: {plan.id})")
-                except Plan.DoesNotExist:
-                    print(f"ERROR: Plan with ID {plan_id} not found in database")
-                    return Response({
-                        "error": f"Plan with ID {plan_id} not found in database"
-                    }, status=400)
-            else:
-                # Fallback: Try to extract plan code from Paystack response
-                plan_code = None
-                if 'plan' in data and data['plan']:
-                    if isinstance(data['plan'], dict):
-                        plan_code = data['plan'].get('plan_code') or data['plan'].get('code')
-                    elif isinstance(data['plan'], str):
-                        plan_code = data['plan']
-                
-                print(f"Extracted plan_code from Paystack: {plan_code}")
-                
-                if plan_code:
-                    try:
-                        plan = Plan.objects.get(paystack_plan_code=plan_code)
-                        print(f"Found plan by code: {plan.name}")
-                    except Plan.DoesNotExist:
-                        # List all available plans for debugging
-                        all_plans = list(Plan.objects.all().values('id', 'name', 'paystack_plan_code'))
-                        print(f"Available plans in database: {all_plans}")
-                        return Response({
-                            "error": f"Plan with code '{plan_code}' not found in database",
-                            "available_plans": all_plans
-                        }, status=400)
-                else:
-                    print("ERROR: Could not extract plan information from transaction")
-                    return Response({
-                        "error": "Could not identify Plan from transaction data. No plan_id in metadata and no plan code in response."
-                    }, status=400)
-
-            # 3. Get user by email - FIXED: Use the User model, not settings.AUTH_USER_MODEL
-            user_email = data['customer']['email']
-            print(f"Looking for user with email: {user_email}")
+                plan = Plan.objects.filter(id=plan_id).first()
             
-            try:
-                user = User.objects.get(email=user_email)  # CHANGED THIS LINE
-                print(f"Found user: {user.id} - {user.email}")
-            except User.DoesNotExist:  # CHANGED THIS LINE
-                print(f"ERROR: User not found with email: {user_email}")
-                return Response({
-                    "error": f"User with email {user_email} not found"
-                }, status=404)
+            if not plan:
+                # Fallback to plan code
+                plan_code = data.get('plan', {}).get('plan_code') if isinstance(data.get('plan'), dict) else data.get('plan')
+                if plan_code:
+                    plan = Plan.objects.filter(paystack_plan_code=plan_code).first()
 
-            # 4. Check if already processed
+            if not plan:
+                return Response({"error": "Could not identify plan for this transaction"}, status=400)
+
+            # 2. Identify User
+            user_email = data['customer']['email']
+            user = User.objects.filter(email=user_email).first()
+            if not user:
+                return Response({"error": "User associated with payment not found"}, status=404)
+
+            # 3. Handle Duplicates
             if Subscription.objects.filter(paystack_reference=reference).exists():
-                print(f"WARNING: Transaction {reference} already processed")
-                return Response({
-                    "error": "Transaction already processed",
-                    "message": "This payment has already been recorded"
-                }, status=400)
+                return Response({"status": "success", "message": "Already processed"}, status=200)
 
-            # 5. Deactivate old subscriptions
-            old_subs_count = user.subscriptions.filter(is_active=True).update(is_active=False)
-            print(f"Deactivated {old_subs_count} old subscriptions")
+            # 4. Activate Subscription
+            # Set all other user subscriptions to inactive
+            user.subscriptions.filter(is_active=True).update(is_active=False)
 
-            # 6. Create new subscription
+            # Create the new active subscription
             subscription = Subscription.objects.create(
                 user=user, 
                 plan=plan, 
@@ -287,32 +217,15 @@ class PaymentVerifyView(generics.GenericAPIView):
                 start_date=timezone.now().date()
             )
             
-            print(f"SUCCESS: Created subscription {subscription.id} for user {user.email}")
-            print(f"Plan: {plan.name}, Reference: {reference}")
-
             return Response({
                 "status": "success", 
-                "message": "Subscription activated successfully",
-                "subscription": {
-                    "plan": plan.name,
-                    "reference": reference,
-                    "start_date": subscription.start_date.isoformat()
-                }
+                "message": "Subscription activated",
+                "plan": plan.name
             }, status=200)
 
         except Exception as e:
-            error_trace = traceback.format_exc()
-            print("=== CRITICAL ERROR ===")
-            print(f"Error: {str(e)}")
-            print(error_trace)
-            print("======================")
-            
-            return Response({
-                "error": "Internal Processing Error",
-                "message": str(e),
-                "reference": reference,
-                "hint": "Check server logs for full traceback"
-            }, status=500)
+            print(traceback.format_exc())
+            return Response({"error": "Internal Processing Error", "details": str(e)}, status=500)
 
 class PartnerReportView(generics.ListAPIView):
     serializer_class = CheckInReportSerializer

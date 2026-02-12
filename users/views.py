@@ -3,7 +3,7 @@ from rest_framework import generics, permissions
 from rest_framework_simplejwt.views import TokenObtainPairView
 from .serializers import (
     UserRegisterSerializer, 
-    UserProfileSerializer,
+    UserProfileSerializerDetailed, # Imported the detailed one
     MyTokenObtainPairSerializer
 )
 
@@ -19,7 +19,8 @@ class UserRegisterView(generics.CreateAPIView):
 
 class UserProfileView(generics.RetrieveAPIView):
     queryset = User.objects.all()
-    serializer_class = UserProfileSerializer
+    # SWITCHED: Now uses the Detailed serializer
+    serializer_class = UserProfileSerializerDetailed
     permission_classes = [permissions.IsAuthenticated]
 
     def get_object(self):
