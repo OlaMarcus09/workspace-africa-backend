@@ -41,31 +41,49 @@ class GenerateCheckInTokenView(generics.GenericAPIView):
     @transaction.atomic
     def post(self, request, *args, **kwargs):
         user = request.user
+        
+        # Ensure user is authenticated
+        if not user or user.is_anonymous:
+            return Response({"error": "Authentication required."}, status=status.HTTP_401_UNAUTHORIZED)
+
         now = timezone.now()
+        
         try:
+            # Fetch active subscription
             sub = user.subscriptions.filter(is_active=True).first()
+            
             if not sub:
-                return Response({"error": "No active subscription."}, status=status.HTTP_403_FORBIDDEN)
+                return Response({"error": "No active subscription found."}, status=status.HTTP_403_FORBIDDEN)
+            
+            # Check for expiry
             if sub.end_date and sub.end_date < now.date():
                 sub.is_active = False
                 sub.save()
-                return Response({"error": "Subscription expired."}, status=status.HTTP_403_FORBIDDEN)
-        except Exception:
-            return Response({"error": "Auth check failed."}, status=status.HTTP_403_FORBIDDEN)
+                return Response({"error": "Subscription has expired."}, status=status.HTTP_403_FORBIDDEN)
+                
+        except Exception as e:
+            return Response({"error": f"Authorization check failed: {str(e)}"}, status=status.HTTP_403_FORBIDDEN)
 
+        # Calculate usage based on distinct dates since subscription start
         start_date = sub.start_date
-        used_dates_qs = CheckIn.objects.filter(user=user, timestamp__gte=start_date).values_list('timestamp__date', flat=True)
+        used_dates_qs = CheckIn.objects.filter(
+            user=user, 
+            timestamp__gte=start_date
+        ).values_list('timestamp__date', flat=True)
+        
         used_dates = set(used_dates_qs)
         days_used_count = len(used_dates)
         total_days_allowed = sub.plan.included_days
 
         today = now.date()
-        is_new_day_visit = today in used_dates
+        is_already_checked_in_today = today in used_dates
 
-        if not is_new_day_visit: # It's a new day visit
+        # If it's a new day, check against plan limits
+        if not is_already_checked_in_today:
             if days_used_count >= total_days_allowed:
-                return Response({"error": "Plan limit reached."}, status=status.HTTP_403_FORBIDDEN)
+                return Response({"error": "Monthly plan limit reached."}, status=status.HTTP_403_FORBIDDEN)
 
+        # Refresh the token (delete old, create new)
         CheckInToken.objects.filter(user=user).delete()
         token = CheckInToken.objects.create(user=user)
         
@@ -74,7 +92,7 @@ class GenerateCheckInTokenView(generics.GenericAPIView):
             **serializer.data,
             "meta": {
                 "plan": sub.plan.name,
-                "days_used": days_used_count + (0 if is_new_day_visit else 1),
+                "days_used": days_used_count + (0 if is_already_checked_in_today else 1),
                 "days_total": total_days_allowed
             }
         }, status=status.HTTP_201_CREATED)
@@ -178,7 +196,7 @@ class PaymentVerifyView(generics.GenericAPIView):
             data = resp_json['data']
             metadata = data.get('metadata', {})
             
-            # 1. Identify Plan
+            # 1. Identify Plan via Metadata or Plan Code
             plan_id = metadata.get('plan_id') if isinstance(metadata, dict) else None
             plan = None
 
@@ -186,8 +204,8 @@ class PaymentVerifyView(generics.GenericAPIView):
                 plan = Plan.objects.filter(id=plan_id).first()
             
             if not plan:
-                # Fallback to plan code
-                plan_code = data.get('plan', {}).get('plan_code') if isinstance(data.get('plan'), dict) else data.get('plan')
+                plan_info = data.get('plan')
+                plan_code = plan_info.get('plan_code') if isinstance(plan_info, dict) else plan_info
                 if plan_code:
                     plan = Plan.objects.filter(paystack_plan_code=plan_code).first()
 
@@ -200,16 +218,14 @@ class PaymentVerifyView(generics.GenericAPIView):
             if not user:
                 return Response({"error": "User associated with payment not found"}, status=404)
 
-            # 3. Handle Duplicates
+            # 3. Prevent Duplicate Processing
             if Subscription.objects.filter(paystack_reference=reference).exists():
-                return Response({"status": "success", "message": "Already processed"}, status=200)
+                return Response({"status": "success", "message": "Transaction already processed"}, status=200)
 
-            # 4. Activate Subscription
-            # Set all other user subscriptions to inactive
+            # 4. Activate New Subscription
             user.subscriptions.filter(is_active=True).update(is_active=False)
 
-            # Create the new active subscription
-            subscription = Subscription.objects.create(
+            Subscription.objects.create(
                 user=user, 
                 plan=plan, 
                 paystack_reference=reference, 
@@ -219,7 +235,7 @@ class PaymentVerifyView(generics.GenericAPIView):
             
             return Response({
                 "status": "success", 
-                "message": "Subscription activated",
+                "message": "Subscription activated successfully",
                 "plan": plan.name
             }, status=200)
 
