@@ -231,36 +231,48 @@ class PaymentVerifyView(generics.GenericAPIView):
             if data['status'] != 'success':
                 return Response({"error": "Payment not successful"}, status=status.HTTP_400_BAD_REQUEST)
 
-            # Extract user and plan
-            user_email = data['customer']['email']
-            # Paystack returns the plan code, make sure we find the matching Plan
-            plan_code = data.get('plan') 
+            # --- CRITICAL FIX START: Extract Plan Code Safely ---
+            plan_code = None
+            if 'plan' in data and data['plan']:
+                # Paystack sometimes returns an object {code: "PLN_...", ...} or just a string
+                if isinstance(data['plan'], dict):
+                    plan_code = data['plan'].get('plan_code') or data['plan'].get('code')
+                else:
+                    plan_code = data['plan']
             
-            user = get_object_or_404(settings.AUTH_USER_MODEL, email=user_email)
-            
-            # If Paystack didn't return a plan code (direct charge), try metadata
+            # Fallback: check metadata if plan_code is still None
             if not plan_code and 'metadata' in data:
-                plan_id = data['metadata'].get('plan_id')
-                plan = get_object_or_404(Plan, id=plan_id)
-            else:
-                plan = get_object_or_404(Plan, paystack_plan_code=plan_code)
+                 if isinstance(data['metadata'], dict):
+                     plan_id = data['metadata'].get('plan_id')
+                     if plan_id:
+                         plan_obj = get_object_or_404(Plan, id=plan_id)
+                         plan_code = plan_obj.paystack_plan_code
 
-            # Prevent duplicate processing
+            if not plan_code:
+                # Log detailed data to Vercel logs so we can debug if it fails again
+                print(f"PAYSTACK ERROR: No plan code found. Data keys: {data.keys()}")
+                if 'plan' in data: print(f"Plan Data: {data['plan']}")
+                return Response({"error": "Could not identify plan from transaction"}, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Now we are safe to lookup
+            user_email = data['customer']['email']
+            user = get_object_or_404(settings.AUTH_USER_MODEL, email=user_email)
+            plan = get_object_or_404(Plan, paystack_plan_code=plan_code)
+            # --- CRITICAL FIX END ---
+
             if Subscription.objects.filter(paystack_reference=reference).exists():
                 return Response({"error": "This payment has already been processed."}, status=status.HTTP_400_BAD_REQUEST)
 
             # Deactivate old subscriptions
             user.subscriptions.update(is_active=False)
 
-            # Create NEW Connection (This answers your question!)
+            # Create NEW Connection
             Subscription.objects.create(
                 user=user, 
                 plan=plan, 
                 paystack_reference=reference, 
                 is_active=True
-                # end_date is auto-calculated by DB triggers or logic elsewhere, 
-                # or we can set it here if needed:
-                # end_date = timezone.now().date() + timezone.timedelta(days=30)
+                # end_date is auto-calculated by DB triggers or logic elsewhere
             )
 
             success_url = getattr(settings, 'PAYMENT_SUCCESS_URL', 'https://workspace-nomad.vercel.app/payment-success')
