@@ -51,7 +51,6 @@ class UserRegisterSerializer(serializers.ModelSerializer):
         )
         return user
 
-# This is the serializer the Profile View should now use
 class UserProfileSerializerDetailed(serializers.ModelSerializer):
     subscription = serializers.SerializerMethodField()
     plan_name = serializers.SerializerMethodField()
@@ -88,7 +87,14 @@ class UserProfileSerializerDetailed(serializers.ModelSerializer):
 
     def get_total_days(self, obj):
         sub = obj.subscriptions.filter(is_active=True).first()
-        return sub.plan.included_days if sub else 0
+        if not sub:
+            return 0
+        
+        # --- LOGIC UPDATED ---
+        # Since you set FLEX_UNLIMITED to 30, we return 999 to signal 
+        # "Unlimited" to the frontend modal and analytics page.
+        days = sub.plan.included_days
+        return 999 if days >= 30 else days
 
 class TeamMemberSerializer(serializers.ModelSerializer):
     class Meta:

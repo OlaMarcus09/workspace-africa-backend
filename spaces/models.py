@@ -10,7 +10,7 @@ class Plan(models.Model):
     
     name = models.CharField(max_length=100, unique=True)
     price_ngn = models.DecimalField(max_digits=10, decimal_places=2)
-    included_days = models.PositiveIntegerField(help_text="Number of days included per month. Use 999 for unlimited.")
+    included_days = models.PositiveIntegerField(help_text="Number of days included per month. Use 30 for unlimited.")
     access_tier = models.CharField(max_length=20, choices=AccessTier.choices, default=AccessTier.STANDARD)
     paystack_plan_code = models.CharField(max_length=100, blank=True, null=True, help_text="ID from Paystack for this plan")
 
