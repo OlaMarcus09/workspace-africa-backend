@@ -8,18 +8,34 @@ User = get_user_model()
 
 class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
     username_field = 'email'
+
     def validate(self, attrs):
-        email = attrs.get('email')
+        # --- CODEX IMPROVEMENT: Sanitization ---
+        email = (attrs.get('email') or '').strip().lower()
+        password = attrs.get('password') or attrs.get('passkey')
+
         if not email:
             raise serializers.ValidationError({"email": "Email field is required."})
-        try:
-            user = User.objects.get(email=email)
-        except User.DoesNotExist:
+        if not password:
+            raise serializers.ValidationError({"passkey": "Passkey/password is required."})
+
+        # --- CODEX IMPROVEMENT: Case-insensitive search ---
+        user = User.objects.filter(email__iexact=email).first()
+        
+        if not user:
             raise serializers.ValidationError({"email": "No user found with this email address."})
         if not user.is_active:
             raise serializers.ValidationError({"email": "This account is inactive."})
+
+        # Update attrs for the base Django validation
+        attrs['email'] = user.email
+        attrs['password'] = password
         attrs['username'] = user.username
+        
+        # Call original validation
         data = super().validate(attrs)
+        
+        # Custom response data for the frontend
         data['user_id'] = user.id
         data['email'] = user.email
         data['username'] = user.username
@@ -39,10 +55,12 @@ class UserRegisterSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ('email', 'username', 'password', 'password2')
+    
     def validate(self, attrs):
         if attrs['password'] != attrs['password2']:
             raise serializers.ValidationError({"password": "Password fields didn't match."})
         return attrs
+    
     def create(self, validated_data):
         user = User.objects.create_user(
             email=validated_data['email'],
@@ -56,7 +74,7 @@ class UserProfileSerializerDetailed(serializers.ModelSerializer):
     plan_name = serializers.SerializerMethodField()
     days_used = serializers.SerializerMethodField()
     total_days = serializers.SerializerMethodField()
-    total_checkins = serializers.SerializerMethodField() # FIX: Added to resolve "0 LIFETIME" logins
+    total_checkins = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -78,7 +96,6 @@ class UserProfileSerializerDetailed(serializers.ModelSerializer):
         return sub.plan.name if sub else "FREE_TIER"
 
     def get_total_checkins(self, obj):
-        # FIX: Returns the total count of all check-in records for the user
         return obj.check_ins.count()
 
     def get_days_used(self, obj):
@@ -95,10 +112,8 @@ class UserProfileSerializerDetailed(serializers.ModelSerializer):
         if not sub:
             return 0
         
-        # --- LOGIC UPDATED ---
-        # Since FLEX_UNLIMITED is set to 30 in the database,
-        # we return 999 to signal "Unlimited" to the frontend components.
         days = sub.plan.included_days
+        # Return 999 to signal "Unlimited" to frontend
         return 999 if days >= 30 else days
 
 class TeamMemberSerializer(serializers.ModelSerializer):
