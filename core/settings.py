@@ -1,13 +1,14 @@
-from pathlib import Path
 import os
+from pathlib import Path
 import dj_database_url
 from datetime import timedelta
 
 # Current file is core/settings.py, so parent.parent is root
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = 'django-insecure-new-neon-vercel-key-CHANGE-THIS-IN-ENV-LATER'
-DEBUG = False 
+# Security settings (Using environment variables with fallbacks)
+SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-new-neon-vercel-key-CHANGE-THIS-IN-ENV-LATER')
+DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 
 ALLOWED_HOSTS = ['*', '.vercel.app', 'localhost', '127.0.0.1']
 CSRF_TRUSTED_ORIGINS = ['https://*.vercel.app']
@@ -19,9 +20,13 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    
+    # Third-party apps
     'rest_framework',
-    'rest_framework.authtoken',
+    'rest_framework_simplejwt', 
     'corsheaders',
+    
+    # Custom apps
     'users',
     'spaces',
     'teams',
@@ -29,7 +34,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware', # 1. ENABLE THIS
+    'whitenoise.middleware.WhiteNoiseMiddleware', # Essential for serving Admin CSS on Vercel
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -79,20 +84,20 @@ TIME_ZONE = 'UTC'
 USE_I18N = True
 USE_TZ = True
 
-# --- STATIC FILES CONFIGURATION ---
+# --- STATIC FILES CONFIGURATION (WHITENOISE & VERCEL READY) ---
 STATIC_URL = '/static/'
-# 2. Point to the folder we know exists in Git
-STATIC_ROOT = os.path.join(BASE_DIR, 'public', 'static')
-# 3. Use Simple Storage (No Manifest) to prevent 500 errors if files change
+# Standard Django folder name for collected static files in production
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles') 
+# Using CompressedStaticFilesStorage prevents the 500 error caused by missing manifest files
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedStaticFilesStorage'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL = 'users.CustomUser'
 
-# --- AUTHENTICATION & JWT CONFIGURATION (FIXED) ---
+# --- AUTHENTICATION & JWT CONFIGURATION ---
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework_simplejwt.authentication.JWTAuthentication', # <--- ADDED THIS
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
         'rest_framework.authentication.TokenAuthentication',
         'rest_framework.authentication.SessionAuthentication',
     ],
@@ -111,5 +116,6 @@ SIMPLE_JWT = {
 
 CORS_ALLOW_ALL_ORIGINS = True
 
+# --- PAYMENT INTEGRATION ---
 PAYSTACK_SECRET_KEY = os.environ.get('PAYSTACK_SECRET_KEY', 'sk_test_854249d7ba0e4249379aa705c33779f0d6560014')
 PAYSTACK_PUBLIC_KEY = os.environ.get('PAYSTACK_PUBLIC_KEY', 'pk_test_33ced6d752ba6716b596d2d5159231e7b23d87c7')
