@@ -34,7 +34,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware', # Essential for serving Admin CSS on Vercel
+    # 'whitenoise.middleware.WhiteNoiseMiddleware', # REMOVED: Vercel CDN will handle static routing now
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -84,12 +84,10 @@ TIME_ZONE = 'UTC'
 USE_I18N = True
 USE_TZ = True
 
-# --- STATIC FILES CONFIGURATION (WHITENOISE & VERCEL READY) ---
+# --- STATIC FILES CONFIGURATION (VERCEL NATIVE ROUTING) ---
 STATIC_URL = '/static/'
-# Standard Django folder name for collected static files in production
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles') 
-# Using CompressedStaticFilesStorage prevents the 500 error caused by missing manifest files
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedStaticFilesStorage'
+STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.StaticFilesStorage'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL = 'users.CustomUser'
