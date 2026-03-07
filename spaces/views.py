@@ -45,7 +45,7 @@ class GenerateCheckInTokenView(generics.GenericAPIView):
     def post(self, request, *args, **kwargs):
         user = request.user
         
-        # 1. Validation: Ensure user is authenticated and not anonymous
+        # 1. Validation: Ensure user is authenticated
         if not user or user.is_anonymous:
             return Response({"error": "Authentication required."}, status=status.HTTP_401_UNAUTHORIZED)
 
@@ -67,7 +67,7 @@ class GenerateCheckInTokenView(generics.GenericAPIView):
         except Exception as e:
             return Response({"error": f"Authorization check failed: {str(e)}"}, status=status.HTTP_403_FORBIDDEN)
 
-        # 4. Usage Tracking: Count distinct check-in days for the current plan cycle
+        # 4. Usage Tracking
         start_date = sub.start_date
         used_dates_qs = CheckIn.objects.filter(
             user=user, 
@@ -81,12 +81,12 @@ class GenerateCheckInTokenView(generics.GenericAPIView):
         today = now.date()
         is_already_checked_in_today = today in used_dates
 
-        # 5. Plan Limits: Prevent new bookings if monthly limit reached
+        # 5. Plan Limits
         if not is_already_checked_in_today:
             if days_used_count >= total_days_allowed:
                 return Response({"error": "Monthly plan limit reached."}, status=status.HTTP_403_FORBIDDEN)
 
-        # 6. Token Generation: Clear existing tokens and create a fresh one
+        # 6. Token Generation
         CheckInToken.objects.filter(user=user).delete()
         token = CheckInToken.objects.create(user=user)
         
@@ -128,12 +128,46 @@ class CheckInValidateView(generics.GenericAPIView):
         return Response({"status": "VALID", "user": user_serializer.data}, status=status.HTTP_200_OK)
 
 class PartnerDashboardView(generics.RetrieveAPIView):
+    """
+    UPDATED: Returns stats AND the check-in list to fix the frontend SYNC_ERROR.
+    """
     permission_classes = [IsPartnerUser]
+
     def get(self, request, *args, **kwargs):
         partner_space = request.user.managed_space
-        today = timezone.now().date()
-        current_members_count = CheckIn.objects.filter(space=partner_space, timestamp__date=today).values('user').distinct().count()
-        data = {"space_name": partner_space.name, "current_members": current_members_count}
+        if not partner_space:
+            return Response({"error": "No managed space found for this user."}, status=404)
+
+        now = timezone.now()
+        today = now.date()
+        month_start = today.replace(day=1)
+
+        # 1. Get stats
+        today_checkins = CheckIn.objects.filter(space=partner_space, timestamp__date=today)
+        month_checkins = CheckIn.objects.filter(space=partner_space, timestamp__date__gte=month_start)
+        
+        today_count = today_checkins.values('user').distinct().count()
+        total_month_count = month_checkins.count()
+        
+        # 2. Get recent check-ins for the table (last 50)
+        recent_logs = CheckIn.objects.filter(space=partner_space).select_related('user').order_by('-timestamp')[:50]
+        
+        logs_data = [{
+            "id": log.id,
+            "user": {
+                "email": log.user.email,
+                "username": log.user.username
+            },
+            "timestamp": log.timestamp.isoformat()
+        } for log in recent_logs]
+
+        data = {
+            "space_name": partner_space.name,
+            "today_count": today_count,
+            "month_count": total_month_count,
+            "est_revenue": total_month_count * 2500, # Matching your frontend logic
+            "check_ins": logs_data # The critical fix for your frontend loop
+        }
         return Response(data, status=status.HTTP_200_OK)
 
 class PaymentInitializeView(generics.GenericAPIView):
