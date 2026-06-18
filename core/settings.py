@@ -15,7 +15,7 @@ if not SECRET_KEY:
 
 DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 
-# FIXED: Restricted broad generic evaluation structures across production layers
+# FIXED: Allow all Vercel dynamic subdomains to avoid connection rejections during live validation
 if DEBUG:
     ALLOWED_HOSTS = ['*', 'localhost', '127.0.0.1']
 else:
@@ -48,7 +48,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
-    'corsheaders.middleware.CorsMiddleware',
+    'corsheaders.middleware.CorsMiddleware', # Must be above CommonMiddleware
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -129,18 +129,24 @@ SIMPLE_JWT = {
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
 
-# FIXED: Strict CORS filtering config to protect database tables from external browser origins
+# FIXED: Added wildcard regex support and dynamic Vercel subdomains to prevent CORS blocks during testing
 CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:3000',
     'http://127.0.0.1:3000',
     'https://workspace-africa-gateway.vercel.app',
     'https://workspace-nomad.vercel.app',
+    'https://workspace-nomad-git-main-olamarcus09s-projects.vercel.app', # Fallback for Vercel team branch testing links
+]
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://.*\.vercel\.app$", # Authorizes every single Vercel testing layout link seamlessly
 ]
 CORS_ALLOW_CREDENTIALS = True
 
+# Defend against endpoint miss matches where URLs lack a trailing slash
+APPEND_SLASH = True
+
 # --- PAYMENT INTEGRATION ---
-# FIXED: Erased raw strings. Requires injection via environment managers.
 PAYSTACK_SECRET_KEY = os.environ.get('PAYSTACK_SECRET_KEY')
 PAYSTACK_PUBLIC_KEY = os.environ.get('PAYSTACK_PUBLIC_KEY')
 
