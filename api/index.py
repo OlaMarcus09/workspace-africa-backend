@@ -2,6 +2,10 @@ import os
 import sys
 import traceback
 
+# 1. FORCE TOP-LEVEL DEFINITIONS FOR VERCEL STATIC PARSER
+app = None
+application = None
+
 # Add current directory to path
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
@@ -9,21 +13,24 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings')
 
 try:
-    # Attempt to boot up the Django application
+    # 2. ATTEMPT TO INITIALIZE DJANGO
     from django.core.wsgi import get_wsgi_application
-    application = get_wsgi_application()
-    app = application
+    django_app = get_wsgi_application()
+    
+    # Map back to global handlers
+    app = django_app
+    application = django_app
 
 except Exception as e:
-    # If the boot sequence crashes (Syntax Error, Import Error, etc.), 
-    # catch the traceback and render it as a plain text web response.
+    # 3. CRASH CAPTURE FALLBACK
     error_traceback = traceback.format_exc()
-    print(f"CRITICAL BOOT FAILURE: {error_traceback}")
+    print(f"CRITICAL BOOT FAILURE:\n{error_traceback}")
     
-    def fallback_application(environ, start_response):
+    def fallback_handler(environ, start_response):
         status = '500 Internal Server Error'
-        headers = [('Content-type', 'text/plain')]
+        headers = [('Content-type', 'text/plain; charset=utf-8')]
         start_response(status, headers)
         return [error_traceback.encode('utf-8')]
     
-    app = fallback_application
+    app = fallback_handler
+    application = fallback_handler
