@@ -16,7 +16,7 @@ from .serializers import (
     CheckInValidationSerializer,
     CheckInReportSerializer
 )
-from users.serializers import TeamMemberSerializer 
+from users.serializers import TeamMemberSerializer, UserProfileSerializerDetailed 
 from .permissions import IsPartnerUser
 
 PAYSTACK_SECRET_KEY = settings.PAYSTACK_SECRET_KEY
@@ -100,7 +100,11 @@ class GenerateCheckInTokenView(generics.GenericAPIView):
             }
         }, status=status.HTTP_201_CREATED)
 
+
 class CheckInValidateView(generics.GenericAPIView):
+    """
+    UPDATED: Handles token validation from the partner scanner layout.
+    """
     serializer_class = CheckInValidationSerializer
     permission_classes = [IsPartnerUser]
 
@@ -109,27 +113,52 @@ class CheckInValidateView(generics.GenericAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         code = serializer.validated_data['code']
-        space_id = serializer.validated_data['space_id']
+        space_id = serializer.validated_data.get('space_id')
 
-        if request.user.managed_space.id != space_id:
-            return Response({"error": "Unauthorized space."}, status=status.HTTP_403_FORBIDDEN)
-        
         space = request.user.managed_space
+        if not space:
+            return Response({"error": "No managed space assigned to this partner account."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # FIXED: Defend against wrong space IDs if supplied, otherwise auto-assume partner's space
+        if space_id and space.id != space_id:
+            return Response({"error": "Unauthorized space validation attempt."}, status=status.HTTP_403_FORBIDDEN)
+        
         try:
             token = CheckInToken.objects.select_related('user').get(code=code)
         except CheckInToken.DoesNotExist:
             return Response({"error": "Code not found."}, status=status.HTTP_404_NOT_FOUND)
 
+        # Token expiry check
+        if hasattr(token, 'expires_at') and token.expires_at < timezone.now():
+            token.delete()
+            return Response({"error": "Code has expired."}, status=status.HTTP_400_BAD_REQUEST)
+
         user = token.user
         CheckIn.objects.create(user=user, space=space)
         token.delete()
 
-        user_serializer = TeamMemberSerializer(user) 
-        return Response({"status": "VALID", "user": user_serializer.data}, status=status.HTTP_200_OK)
+        # Calculate remaining days for frontend contracts
+        sub = user.subscriptions.filter(is_active=True).first()
+        remaining_days = None
+        if sub:
+            used_count = CheckIn.objects.filter(
+                user=user, 
+                timestamp__gte=sub.start_date
+            ).values('timestamp__date').distinct().count()
+            remaining_days = max(sub.plan.included_days - used_count, 0)
+
+        # FIXED: Reshaped response mapping directly to frontend code contract demands
+        return Response({
+            "status": "VALID",
+            "user_name": user.username or user.email,
+            "plan_name": sub.plan.name if sub else "NO_PLAN",
+            "remaining_days": remaining_days
+        }, status=status.HTTP_200_OK)
+
 
 class PartnerDashboardView(generics.RetrieveAPIView):
     """
-    UPDATED: Returns stats AND the check-in list to fix the frontend SYNC_ERROR.
+    Returns stats AND the check-in list to fix the frontend SYNC_ERROR.
     """
     permission_classes = [IsPartnerUser]
 
@@ -165,10 +194,24 @@ class PartnerDashboardView(generics.RetrieveAPIView):
             "space_name": partner_space.name,
             "today_count": today_count,
             "month_count": total_month_count,
-            "est_revenue": total_month_count * 2500, # Matching your frontend logic
-            "check_ins": logs_data # The critical fix for your frontend loop
+            "est_revenue": total_month_count * 2500, 
+            "check_ins": logs_data 
         }
         return Response(data, status=status.HTTP_200_OK)
+
+
+class UserProfileView(generics.RetrieveUpdateAPIView):
+    """
+    FIXED: Converted to RetrieveUpdateAPIView to allow PATCH edits from settings apps.
+    """
+    queryset = User.objects.all()
+    serializer_class = UserProfileSerializerDetailed
+    permission_classes = [permissions.IsAuthenticated]
+    http_method_names = ['get', 'patch', 'head', 'options']
+
+    def get_object(self):
+        return self.request.user
+
 
 class PaymentInitializeView(generics.GenericAPIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -212,6 +255,7 @@ class PaymentInitializeView(generics.GenericAPIView):
         except Exception as e:
             return Response({"error": str(e)}, status=500)
 
+
 class PaymentVerifyView(generics.GenericAPIView):
     permission_classes = [permissions.AllowAny]
 
@@ -233,7 +277,6 @@ class PaymentVerifyView(generics.GenericAPIView):
             data = resp_json['data']
             metadata = data.get('metadata', {})
             
-            # Identify Plan
             plan_id = metadata.get('plan_id') if isinstance(metadata, dict) else None
             plan = None
 
@@ -249,17 +292,14 @@ class PaymentVerifyView(generics.GenericAPIView):
             if not plan:
                 return Response({"error": "Could not identify plan for this transaction"}, status=400)
 
-            # Identify User
             user_email = data['customer']['email']
             user = User.objects.filter(email=user_email).first()
             if not user:
                 return Response({"error": "User associated with payment not found"}, status=404)
 
-            # Prevent Duplicate Processing
             if Subscription.objects.filter(paystack_reference=reference).exists():
                 return Response({"status": "success", "message": "Transaction already processed"}, status=200)
 
-            # Activate New Subscription
             user.subscriptions.filter(is_active=True).update(is_active=False)
 
             Subscription.objects.create(
@@ -279,6 +319,7 @@ class PaymentVerifyView(generics.GenericAPIView):
         except Exception as e:
             print(traceback.format_exc())
             return Response({"error": "Internal Processing Error", "details": str(e)}, status=500)
+
 
 class PartnerReportView(generics.ListAPIView):
     serializer_class = CheckInReportSerializer
