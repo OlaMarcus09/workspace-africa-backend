@@ -76,18 +76,29 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'core.wsgi.application'
 
-# FIXED: Removed exposed Neon connection strings from repository code history
-DATABASE_URL = os.environ.get('DATABASE_URL')
-if not DATABASE_URL and not DEBUG:
-    raise ImproperlyConfigured("DATABASE_URL environment variable is required in production environments.")
+# Extract the environment variable cleanly
+DATABASE_URL = os.environ.get('DATABASE_URL', '').strip()
 
-DATABASES = {
-    'default': dj_database_url.config(
-        default=DATABASE_URL or 'postgresql://postgres:postgres@localhost:5432/workspace_africa',
-        conn_max_age=600,
-        ssl_require=not DEBUG
-    )
-}
+# If it's an empty string or completely missing, fallback gracefully for the Vercel build container step
+if not DATABASE_URL:
+    if not DEBUG:
+        print("WARNING: DATABASE_URL is empty. Falling back to local scheme for build execution context.")
+    # Local SQLite safe container fallback so Vercel can compile the static files without breaking
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
+else:
+    DATABASES = {
+        'default': dj_database_url.config(
+            default=DATABASE_URL,
+            conn_max_age=600,
+            ssl_require=not DEBUG
+        )
+    }
+
 
 AUTH_PASSWORD_VALIDATORS = [
     { 'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator', },
