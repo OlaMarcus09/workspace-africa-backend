@@ -47,7 +47,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware', # FIXED: Serves Django Admin CSS styles on Vercel
+    'whitenoise.middleware.WhiteNoiseMiddleware', # Serves Django Admin CSS styles on Vercel
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware', # Must remain above CommonMiddleware
     'django.middleware.common.CommonMiddleware',
@@ -115,8 +115,8 @@ USE_TZ = True
 STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
-# FIXED: Compresses static layouts so WhiteNoise can route dashboard assets directly from RAM
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+# CRITICAL FIX: Downgraded to standard StaticFilesStorage to completely stop the 500 Manifest crashes on API routes
+STATICFILES_STORAGE = 'whitenoise.storage.StaticFilesStorage'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL = 'users.CustomUser'
