@@ -47,8 +47,9 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware', # FIXED: Serves Django Admin CSS styles on Vercel
     'django.contrib.sessions.middleware.SessionMiddleware',
-    'corsheaders.middleware.CorsMiddleware', # Must be above CommonMiddleware
+    'corsheaders.middleware.CorsMiddleware', # Must remain above CommonMiddleware
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -83,7 +84,6 @@ DATABASE_URL = os.environ.get('DATABASE_URL', '').strip()
 if not DATABASE_URL:
     if not DEBUG:
         print("WARNING: DATABASE_URL is empty. Falling back to local scheme for build execution context.")
-    # Local SQLite safe container fallback so Vercel can compile the static files without breaking
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
@@ -99,7 +99,6 @@ else:
         )
     }
 
-
 AUTH_PASSWORD_VALIDATORS = [
     { 'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator', },
     { 'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator', },
@@ -112,10 +111,12 @@ TIME_ZONE = 'UTC'
 USE_I18N = True
 USE_TZ = True
 
-# --- STATIC FILES CONFIGURATION (VERCEL NATIVE ROUTING) ---
+# --- STATIC FILES CONFIGURATION (VERCEL SERVERLESS STORAGE) ---
 STATIC_URL = '/static/'
-STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles') 
-STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.StaticFilesStorage'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+
+# FIXED: Compresses static layouts so WhiteNoise can route dashboard assets directly from RAM
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL = 'users.CustomUser'
@@ -140,21 +141,20 @@ SIMPLE_JWT = {
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
 
-# FIXED: Added wildcard regex support and dynamic Vercel subdomains to prevent CORS blocks during testing
+# Strict CORS filtering config to protect database tables from external browser origins
 CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:3000',
     'http://127.0.0.1:3000',
     'https://workspace-africa-gateway.vercel.app',
     'https://workspace-nomad.vercel.app',
-    'https://workspace-nomad-git-main-olamarcus09s-projects.vercel.app', # Fallback for Vercel team branch testing links
 ]
 CORS_ALLOWED_ORIGIN_REGEXES = [
-    r"^https://.*\.vercel\.app$", # Authorizes every single Vercel testing layout link seamlessly
+    r"^https://.*\.vercel\.app$", # Authorizes Vercel preview testing links seamlessly
 ]
 CORS_ALLOW_CREDENTIALS = True
 
-# Defend against endpoint miss matches where URLs lack a trailing slash
+# Defend against endpoint mismatches where URLs lack a trailing slash
 APPEND_SLASH = True
 
 # --- PAYMENT INTEGRATION ---
