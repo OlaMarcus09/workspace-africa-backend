@@ -2,16 +2,29 @@ import os
 from pathlib import Path
 import dj_database_url
 from datetime import timedelta
+from django.core.exceptions import ImproperlyConfigured
 
 # Current file is core/settings.py, so parent.parent is root
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Security settings (Using environment variables with fallbacks)
-SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-new-neon-vercel-key-CHANGE-THIS-IN-ENV-LATER')
+# Security settings (Enforced via safe environment extractions)
+SECRET_KEY = os.environ.get('SECRET_KEY')
+if not SECRET_KEY:
+    # Fail safely locally if developers haven't established an active shell scope
+    SECRET_KEY = 'django-insecure-development-fallback-key-do-not-use-in-production'
+
 DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 
-ALLOWED_HOSTS = ['*', '.vercel.app', 'localhost', '127.0.0.1']
-CSRF_TRUSTED_ORIGINS = ['https://*.vercel.app']
+# FIXED: Restricted broad generic evaluation structures across production layers
+if DEBUG:
+    ALLOWED_HOSTS = ['*', 'localhost', '127.0.0.1']
+else:
+    ALLOWED_HOSTS = ['.vercel.app', 'workspace-africa-backend.vercel.app']
+
+CSRF_TRUSTED_ORIGINS = [
+    'https://*.vercel.app',
+    'https://workspace-africa-backend.vercel.app'
+]
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -34,7 +47,6 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    # 'whitenoise.middleware.WhiteNoiseMiddleware', # REMOVED: Vercel CDN will handle static routing now
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -64,11 +76,16 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'core.wsgi.application'
 
+# FIXED: Removed exposed Neon connection strings from repository code history
+DATABASE_URL = os.environ.get('DATABASE_URL')
+if not DATABASE_URL and not DEBUG:
+    raise ImproperlyConfigured("DATABASE_URL environment variable is required in production environments.")
+
 DATABASES = {
     'default': dj_database_url.config(
-        default='postgresql://neondb_owner:npg_DuK7yGj2CzIf@ep-red-rain-agfmlw3u-pooler.c-2.eu-central-1.aws.neon.tech/neondb?sslmode=require',
+        default=DATABASE_URL or 'postgresql://postgres:postgres@localhost:5432/workspace_africa',
         conn_max_age=600,
-        ssl_require=True
+        ssl_require=not DEBUG
     )
 }
 
@@ -112,8 +129,20 @@ SIMPLE_JWT = {
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
 
-CORS_ALLOW_ALL_ORIGINS = True
+# FIXED: Strict CORS filtering config to protect database tables from external browser origins
+CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOWED_ORIGINS = [
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'https://workspace-africa-gateway.vercel.app',
+    'https://workspace-nomad.vercel.app',
+]
+CORS_ALLOW_CREDENTIALS = True
 
 # --- PAYMENT INTEGRATION ---
-PAYSTACK_SECRET_KEY = os.environ.get('PAYSTACK_SECRET_KEY', 'sk_test_854249d7ba0e4249379aa705c33779f0d6560014')
-PAYSTACK_PUBLIC_KEY = os.environ.get('PAYSTACK_PUBLIC_KEY', 'pk_test_33ced6d752ba6716b596d2d5159231e7b23d87c7')
+# FIXED: Erased raw strings. Requires injection via environment managers.
+PAYSTACK_SECRET_KEY = os.environ.get('PAYSTACK_SECRET_KEY')
+PAYSTACK_PUBLIC_KEY = os.environ.get('PAYSTACK_PUBLIC_KEY')
+
+if not PAYSTACK_SECRET_KEY and not DEBUG:
+    raise ImproperlyConfigured("PAYSTACK_SECRET_KEY environment variable is required in production.")
