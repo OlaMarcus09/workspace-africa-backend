@@ -49,12 +49,16 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
         token['user_type'] = user.user_type
         return token
 
+
 class UserRegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True, style={'input_type': 'password'})
     password2 = serializers.CharField(write_only=True, required=True, label='Confirm password')
+
     class Meta:
         model = User
-        fields = ('email', 'username', 'password', 'password2')
+        # FIXED: Included user_type so it doesn't get dropped on registration
+        fields = ('email', 'username', 'password', 'password2', 'user_type')
+        extra_kwargs = {'user_type': {'required': False}}
     
     def validate(self, attrs):
         if attrs['password'] != attrs['password2']:
@@ -62,12 +66,17 @@ class UserRegisterSerializer(serializers.ModelSerializer):
         return attrs
     
     def create(self, validated_data):
+        # FIXED: Extract user_type safely, defaulting to SUBSCRIBER if omitted
+        user_type = validated_data.get('user_type', User.UserType.SUBSCRIBER)
+        
         user = User.objects.create_user(
             email=validated_data['email'],
             username=validated_data['username'],
-            password=validated_data['password']
+            password=validated_data['password'],
+            user_type=user_type
         )
         return user
+
 
 class UserProfileSerializerDetailed(serializers.ModelSerializer):
     subscription = serializers.SerializerMethodField()
@@ -78,10 +87,16 @@ class UserProfileSerializerDetailed(serializers.ModelSerializer):
 
     class Meta:
         model = User
+        # FIXED: Added phone field to serialization scope
         fields = (
-            'id', 'email', 'username', 'photo_url', 'user_type',
+            'id', 'email', 'username', 'phone', 'photo_url', 'user_type',
             'team', 'managed_space', 'subscription', 'plan_name', 
             'days_used', 'total_days', 'total_checkins'
+        )
+        # FIXED: Protect computed/relational fields from breaking PATCH actions
+        read_only_fields = (
+            'id', 'user_type', 'team', 'managed_space', 'subscription', 
+            'plan_name', 'days_used', 'total_days', 'total_checkins'
         )
     
     def get_subscription(self, obj):
@@ -115,6 +130,7 @@ class UserProfileSerializerDetailed(serializers.ModelSerializer):
         days = sub.plan.included_days
         # Return 999 to signal "Unlimited" to frontend
         return 999 if days >= 30 else days
+
 
 class TeamMemberSerializer(serializers.ModelSerializer):
     class Meta:
