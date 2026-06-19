@@ -80,7 +80,6 @@ WSGI_APPLICATION = 'core.wsgi.application'
 # Extract the environment variable cleanly
 DATABASE_URL = os.environ.get('DATABASE_URL', '').strip()
 
-# If it's an empty string or completely missing, fallback gracefully for the Vercel build container step
 if not DATABASE_URL:
     if not DEBUG:
         print("WARNING: DATABASE_URL is empty. Falling back to local scheme for build execution context.")
@@ -94,8 +93,8 @@ else:
     DATABASES = {
         'default': dj_database_url.config(
             default=DATABASE_URL,
-            conn_max_age=0,  # CRITICAL FIX: Changed from 600 to 0 to stop dead serverless pooling crashes on Vercel
-            ssl_require=not DEBUG
+            conn_max_age=0,
+            ssl_require=False,  # sslmode=require is already in the Neon URL — don't double-set it
         )
     }
 
