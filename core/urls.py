@@ -46,7 +46,7 @@ urlpatterns = [
     path('api/auth/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('api/users/', include('users.urls')),
     path('api/', include('spaces.urls')),
-    path('api/team/', include('teams.urls')),
+    # path('api/team/', include('teams.urls')),
     path('debug-db/', debug_db, name='debug_db'),
     path('health/', health_check, name='health_check'),
     path('run-migrations/', run_migrations, name='run_migrations'),
