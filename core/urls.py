@@ -5,37 +5,6 @@ from users.views import MyTokenObtainPairView
 from django.db import connection
 from django.http import JsonResponse
 from django.core.management import call_command
-from django.contrib.auth import get_user_model # Added for superuser creation
-
-
-def create_admin(request):
-    secret = request.GET.get("secret")
-    if secret != "workspace2026admin":
-        return JsonResponse({"error": "forbidden"}, status=403)
-
-    User = get_user_model()
-    email = "olawalemarcus92@gmail.com"
-
-    user, created = User.objects.get_or_create(
-        email=email,
-        defaults={
-            "username": "olawale",
-            "is_staff": True,
-            "is_superuser": True,
-        }
-    )
-
-    if created:
-        user.set_password("WorkspaceAfrica2026!")
-        user.is_staff = True
-        user.is_superuser = True
-        user.save()
-        return JsonResponse({"status": "created", "email": email})
-
-    user.is_staff = True
-    user.is_superuser = True
-    user.save()
-    return JsonResponse({"status": "already_exists", "email": email})
 
 
 def run_migrations(request):
@@ -77,11 +46,9 @@ urlpatterns = [
     path('api/auth/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('api/users/', include('users.urls')),
     path('api/', include('spaces.urls')),
-    # path('api/team/', include('teams.urls')),
     
     # Utilities
     path('debug-db/', debug_db, name='debug_db'),
     path('health/', health_check, name='health_check'),
     path('run-migrations/', run_migrations, name='run_migrations'),
-    path('create-admin/', create_admin, name='create_admin'),
 ]
