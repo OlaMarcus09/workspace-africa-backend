@@ -113,3 +113,14 @@ class UserProfileSerializerDetailed(serializers.ModelSerializer):
         plan = sub.plan
         days = getattr(plan, 'included_days', getattr(plan, 'days', 30))
         return 999 if days >= 30 else days
+
+class TeamMemberSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = (
+            'id',
+            'email',
+            'username',
+            'photo_url',
+            'user_type',
+        )
