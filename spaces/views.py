@@ -16,7 +16,7 @@ from .serializers import (
     CheckInValidationSerializer,
     CheckInReportSerializer
 )
-from users.serializers import TeamMemberSerializer, UserProfileSerializerDetailed 
+from users.serializers import UserProfileSerializerDetailed 
 from .permissions import IsPartnerUser
 
 PAYSTACK_SECRET_KEY = settings.PAYSTACK_SECRET_KEY
