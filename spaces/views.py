@@ -35,9 +35,6 @@ class PartnerSpaceViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = PartnerSpaceSerializer
 
 class GenerateCheckInTokenView(generics.GenericAPIView):
-    """
-    Handles the generation of a 6-digit access code for subscribers.
-    """
     serializer_class = CheckInTokenSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -45,20 +42,17 @@ class GenerateCheckInTokenView(generics.GenericAPIView):
     def post(self, request, *args, **kwargs):
         user = request.user
         
-        # 1. Validation: Ensure user is authenticated
         if not user or user.is_anonymous:
             return Response({"error": "Authentication required."}, status=status.HTTP_401_UNAUTHORIZED)
 
         now = timezone.now()
         
         try:
-            # 2. Validation: Check for an active subscription
             sub = user.subscriptions.filter(is_active=True).first()
             
             if not sub:
                 return Response({"error": "No active subscription found."}, status=status.HTTP_403_FORBIDDEN)
             
-            # 3. Validation: Check for expiry
             if sub.end_date and sub.end_date < now.date():
                 sub.is_active = False
                 sub.save()
@@ -67,7 +61,6 @@ class GenerateCheckInTokenView(generics.GenericAPIView):
         except Exception as e:
             return Response({"error": f"Authorization check failed: {str(e)}"}, status=status.HTTP_403_FORBIDDEN)
 
-        # 4. Usage Tracking
         start_date = sub.start_date
         used_dates_qs = CheckIn.objects.filter(
             user=user, 
@@ -81,12 +74,10 @@ class GenerateCheckInTokenView(generics.GenericAPIView):
         today = now.date()
         is_already_checked_in_today = today in used_dates
 
-        # 5. Plan Limits
         if not is_already_checked_in_today:
             if days_used_count >= total_days_allowed:
                 return Response({"error": "Monthly plan limit reached."}, status=status.HTTP_403_FORBIDDEN)
 
-        # 6. Token Generation
         CheckInToken.objects.filter(user=user).delete()
         token = CheckInToken.objects.create(user=user)
         
@@ -102,9 +93,6 @@ class GenerateCheckInTokenView(generics.GenericAPIView):
 
 
 class CheckInValidateView(generics.GenericAPIView):
-    """
-    UPDATED: Handles token validation from the partner scanner layout.
-    """
     serializer_class = CheckInValidationSerializer
     permission_classes = [IsPartnerUser]
 
@@ -119,7 +107,6 @@ class CheckInValidateView(generics.GenericAPIView):
         if not space:
             return Response({"error": "No managed space assigned to this partner account."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # FIXED: Defend against wrong space IDs if supplied, otherwise auto-assume partner's space
         if space_id and space.id != space_id:
             return Response({"error": "Unauthorized space validation attempt."}, status=status.HTTP_403_FORBIDDEN)
         
@@ -128,7 +115,6 @@ class CheckInValidateView(generics.GenericAPIView):
         except CheckInToken.DoesNotExist:
             return Response({"error": "Code not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        # Token expiry check
         if hasattr(token, 'expires_at') and token.expires_at < timezone.now():
             token.delete()
             return Response({"error": "Code has expired."}, status=status.HTTP_400_BAD_REQUEST)
@@ -137,7 +123,6 @@ class CheckInValidateView(generics.GenericAPIView):
         CheckIn.objects.create(user=user, space=space)
         token.delete()
 
-        # Calculate remaining days for frontend contracts
         sub = user.subscriptions.filter(is_active=True).first()
         remaining_days = None
         if sub:
@@ -147,7 +132,6 @@ class CheckInValidateView(generics.GenericAPIView):
             ).values('timestamp__date').distinct().count()
             remaining_days = max(sub.plan.included_days - used_count, 0)
 
-        # FIXED: Reshaped response mapping directly to frontend code contract demands
         return Response({
             "status": "VALID",
             "user_name": user.username or user.email,
@@ -157,9 +141,6 @@ class CheckInValidateView(generics.GenericAPIView):
 
 
 class PartnerDashboardView(generics.RetrieveAPIView):
-    """
-    Returns stats AND the check-in list to fix the frontend SYNC_ERROR.
-    """
     permission_classes = [IsPartnerUser]
 
     def get(self, request, *args, **kwargs):
@@ -171,14 +152,12 @@ class PartnerDashboardView(generics.RetrieveAPIView):
         today = now.date()
         month_start = today.replace(day=1)
 
-        # 1. Get stats
         today_checkins = CheckIn.objects.filter(space=partner_space, timestamp__date=today)
         month_checkins = CheckIn.objects.filter(space=partner_space, timestamp__date__gte=month_start)
         
         today_count = today_checkins.values('user').distinct().count()
         total_month_count = month_checkins.count()
         
-        # 2. Get recent check-ins for the table (last 50)
         recent_logs = CheckIn.objects.filter(space=partner_space).select_related('user').order_by('-timestamp')[:50]
         
         logs_data = [{
@@ -201,9 +180,6 @@ class PartnerDashboardView(generics.RetrieveAPIView):
 
 
 class UserProfileView(generics.RetrieveUpdateAPIView):
-    """
-    FIXED: Converted to RetrieveUpdateAPIView to allow PATCH edits from settings apps.
-    """
     queryset = User.objects.all()
     serializer_class = UserProfileSerializerDetailed
     permission_classes = [permissions.IsAuthenticated]
@@ -280,17 +256,24 @@ class PaymentVerifyView(generics.GenericAPIView):
             plan_id = metadata.get('plan_id') if isinstance(metadata, dict) else None
             plan = None
 
+            # 1. Try to match via metadata
             if plan_id:
                 plan = Plan.objects.filter(id=plan_id).first()
             
+            # 2. Try to match via Paystack Plan Code
             if not plan:
                 plan_info = data.get('plan')
                 plan_code = plan_info.get('plan_code') if isinstance(plan_info, dict) else plan_info
                 if plan_code:
                     plan = Plan.objects.filter(paystack_plan_code=plan_code).first()
 
+            # 3. BULLETPROOF FALLBACK: Map the exact amount paid to the plan price
             if not plan:
-                return Response({"error": "Could not identify plan for this transaction"}, status=400)
+                amount_paid = int(data.get('amount', 0)) / 100
+                plan = Plan.objects.filter(price_ngn=amount_paid).first()
+
+            if not plan:
+                return Response({"error": "Could not identify plan for this transaction. Missing DB link."}, status=400)
 
             user_email = data['customer']['email']
             user = User.objects.filter(email=user_email).first()
