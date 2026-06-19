@@ -1,3 +1,42 @@
+from rest_framework import serializers
+from django.contrib.auth import get_user_model
+
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+
+User = get_user_model()
+
+
+class UserRegisterSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True, min_length=8)
+    password2 = serializers.CharField(write_only=True)
+
+    class Meta:
+        model = User
+        fields = ('id', 'email', 'username', 'password', 'password2')
+
+    def validate(self, attrs):
+        if attrs['password'] != attrs['password2']:
+            raise serializers.ValidationError({"password": "Passwords do not match."})
+        return attrs
+
+    def create(self, validated_data):
+        validated_data.pop('password2')
+        return User.objects.create_user(
+            email=validated_data['email'],
+            username=validated_data['username'],
+            password=validated_data['password'],
+        )
+
+
+class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
+    @classmethod
+    def get_token(cls, user):
+        token = super().get_token(user)
+        token['email'] = user.email
+        token['user_type'] = user.user_type
+        return token
+
+
 class UserProfileSerializerDetailed(serializers.ModelSerializer):
     subscription = serializers.SerializerMethodField()
     plan_name = serializers.SerializerMethodField()
@@ -8,17 +47,16 @@ class UserProfileSerializerDetailed(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = (
-            'id', 'email', 'username', 'phone', 'photo_url', 'user_type',
-            'team', 'managed_space', 'subscription', 'plan_name', 
+            'id', 'email', 'username', 'photo_url', 'user_type',
+            'team', 'managed_space', 'subscription', 'plan_name',
             'days_used', 'total_days', 'total_checkins'
         )
         read_only_fields = (
-            'id', 'user_type', 'team', 'managed_space', 'subscription', 
+            'id', 'user_type', 'team', 'managed_space', 'subscription',
             'plan_name', 'days_used', 'total_days', 'total_checkins'
         )
-    
+
     def _get_active_sub(self, obj):
-        # Defend against missing related names on the User model
         try:
             if hasattr(obj, 'subscriptions'):
                 return obj.subscriptions.filter(is_active=True).first()
@@ -59,7 +97,6 @@ class UserProfileSerializerDetailed(serializers.ModelSerializer):
         if not sub or not getattr(sub, 'start_date', None):
             return 0
         try:
-            # Defend against missing checkin query paths
             checkins_mgr = getattr(obj, 'check_ins', getattr(obj, 'checkin_set', None))
             if checkins_mgr:
                 return checkins_mgr.filter(
@@ -73,10 +110,6 @@ class UserProfileSerializerDetailed(serializers.ModelSerializer):
         sub = self._get_active_sub(obj)
         if not sub or not getattr(sub, 'plan', None):
             return 0
-        
-        # Safely read field duration regardless of whether it's named 'included_days', 'days', or missing
         plan = sub.plan
         days = getattr(plan, 'included_days', getattr(plan, 'days', 30))
-        
-        # Return 999 to signal "Unlimited" to frontend
         return 999 if days >= 30 else days
