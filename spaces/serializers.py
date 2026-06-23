@@ -25,15 +25,18 @@ class CheckInTokenSerializer(serializers.ModelSerializer):
 
 class CheckInValidationSerializer(serializers.Serializer):
     code = serializers.CharField(max_length=6)
-    space_id = serializers.IntegerField()
+    # FIX: Make space_id optional so the backend can automatically detect it from the partner's profile
+    space_id = serializers.IntegerField(required=False, allow_null=True)
 
 class SubscriptionCreateSerializer(serializers.Serializer):
     plan_id = serializers.IntegerField()
     paystack_reference = serializers.CharField(max_length=100)
+    
     def validate_plan_id(self, value):
         if not Plan.objects.filter(id=value).exists():
             raise serializers.ValidationError("This plan does not exist.")
         return value
+        
     def validate_paystack_reference(self, value):
         if Subscription.objects.filter(paystack_reference=value).exists():
             raise serializers.ValidationError("This payment has already been processed.")
