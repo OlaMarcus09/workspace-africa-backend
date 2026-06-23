@@ -169,11 +169,14 @@ class PartnerDashboardView(generics.RetrieveAPIView):
             "timestamp": log.timestamp.isoformat()
         } for log in recent_logs]
 
+        # --- FIX: Dynamic payout calculation based on the specific partner's contract ---
+        dynamic_revenue = float(total_month_count * partner_space.payout_per_checkin_ngn)
+
         data = {
             "space_name": partner_space.name,
             "today_count": today_count,
             "month_count": total_month_count,
-            "est_revenue": total_month_count * 2500, 
+            "est_revenue": dynamic_revenue, 
             "check_ins": logs_data 
         }
         return Response(data, status=status.HTTP_200_OK)
